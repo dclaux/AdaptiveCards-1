@@ -51,7 +51,7 @@ function iconFromTestState(state: TestState) : string {
 
 class TestResult
 {
-    constructor(public filename: string, public result: TestState, public validationErrors?: ac.ValidationFailure[], public error? : Error) {
+    constructor(public filename: string, public result: TestState, public validationErrors?: ac.IValidationEvent[], public error? : Error) {
         if (error && result != TestState.Failed) {
             throw "invalid pass state";
         }
@@ -109,7 +109,7 @@ async function testFile(filename : string) : Promise<TestResult> {
                 let testCard = new ac.AdaptiveCard();
                 testCard.parse(cardJson);
                 let validateProperties = testCard.validateProperties();
-                return validateProperties.failures;
+                return validateProperties.validationEvents;
             }).then((validationErrors) => {
                 // determine pass state from warnings (errors are caught in .catch() below)
                 let testState : TestState;
@@ -233,10 +233,8 @@ main().then((testResults) => {
 
         // print any warnings associated with this result
         if (testResult.validationErrors?.length) {
-            testResult.validationErrors.forEach((errorCollections) => {
-                errorCollections.errors.forEach((error) => {
-                    console.log(chalk.yellow(`▶\twarning: ${error.message}`));
-                });
+            testResult.validationErrors.forEach((validationEvent) => {
+                console.log(chalk.yellow(`▶\twarning: ${validationEvent.message}`));
             });
         }
 
