@@ -27,7 +27,7 @@
 		"iterate": "webpack --cache --mode=production --progress && npm run dts",
 		"release": "npm run build && webpack --mode=production && npm run dts"
 	},
-	"dependencies": {
+	"peerDependencies": {
 		"adaptivecards": "^2.10.0-beta.1"
 	},
 	"devDependencies": {
@@ -43,5 +43,8 @@
 		"webpack-cli": "^4.7.2",
 		"webpack-concat-plugin": "^3.0.0",
 		"webpack-dev-server": "^3.11.2"
+	},
+	"dependencies": {
+		"chart.js": "^3.5.1"
 	}
 }

@@ -22,8 +22,8 @@
 		"webpack-dev-server": "^3.11.2"
 	},
 	"dependencies": {
-		"adaptivecards": "^2.10.0-beta.1",
 		"adaptive-expressions": "^4.11.0",
+		"adaptivecards": "^2.10.0-beta.1",
 		"adaptivecards-templating": "^2.2.0-beta.1"
 	}
 }

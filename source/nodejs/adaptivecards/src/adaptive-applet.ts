@@ -53,6 +53,8 @@ export class AdaptiveApplet {
     private static readonly cancelMagicCodeAuthActionId = "cancelMagicCodeAuth";
 
     private _card?: AdaptiveCard;
+    private _dataPayload: any;
+    private _templatePayload: any;
     private _cardPayload: any;
     private _allowAutomaticCardUpdate: boolean = false;
     private _refreshButtonHostElement: HTMLElement;
@@ -220,24 +222,45 @@ export class AdaptiveApplet {
 
     private internalSetCard(payload: any, consecutiveRefreshes: number) {
         if (typeof payload === "object" && payload["type"] === "AdaptiveCard") {
-            this._cardPayload = payload;
+            // Payload is an Adaptive Card or template
+
+            if (payload.hasOwnProperty("$data")) {
+                // Payload is a template with associated data
+                this._dataPayload = payload["$data"];
+                this._templatePayload = payload;
+                delete this._templatePayload["$data"];
+
+                this._cardPayload = this.onExpandTemplate ? this.onExpandTemplate(this, this._templatePayload, this._dataPayload) : undefined;
+            }
+            else {
+                // Payload is a fully formed Adaptive Card
+                this._cardPayload = payload;
+                this._templatePayload = undefined;
+                this._dataPayload = undefined;
+            }
+        }
+        else {
+            // Payload is data, which we want to bind to the previously stored template
+            this._dataPayload = payload;
+
+            this._cardPayload = this.onExpandTemplate ? this.onExpandTemplate(this, this._templatePayload, this._dataPayload) : undefined;
         }
 
         if (this._cardPayload) {
             try {
-                let card = new AdaptiveCard();
-
-                if (this.hostConfig) {
-                    card.hostConfig = this.hostConfig;
-                }
-
-                let serializationContext = this.createSerializationContext();
-
-                card.parse(this._cardPayload, serializationContext);
-
                 let doChangeCard = this.onCardChanging ? this.onCardChanging(this, this._cardPayload) : true;
 
                 if (doChangeCard) {
+                    let card = new AdaptiveCard();
+
+                    if (this.hostConfig) {
+                        card.hostConfig = this.hostConfig;
+                    }
+
+                    let serializationContext = this.createSerializationContext();
+
+                    card.parse(this._cardPayload, serializationContext);
+
                     this._card = card;
 
                     if (this._card.authentication && this._card.authentication.tokenExchangeResource && this.onPrefetchSSOToken) {
@@ -593,6 +616,7 @@ export class AdaptiveApplet {
     onShowManualRefreshButton?: (sender: AdaptiveApplet) => boolean;
     onShowAuthCodeInputDialog?: (sender: AdaptiveApplet, request: IActivityRequest) => boolean;
     onShowSigninPrompt?: (sender: AdaptiveApplet, request: IActivityRequest, signinButton: AuthCardButton) => void;
+    onExpandTemplate?: (sender: AdaptiveApplet, templatePayload: object, dataPayload: any) => object | undefined;
 
     constructor() {
         this.renderedElement = document.createElement("div");

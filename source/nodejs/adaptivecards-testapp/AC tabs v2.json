@@ -1,0 +1,72 @@
+{
+    "type": "Dashboard",
+    "actions": [
+        {
+            "type": "Action.XXX",
+            "title": "Quick action 1"
+        },
+        {
+            "type": "Action.XXX",
+            "title": "Quick action 2"
+        },
+        {
+            "type": "Action.XXX",
+            "title": "Quick action 3"
+        }
+    ],
+    "sections": [
+        {
+            "weight": 1,
+            "widgets": [
+            ]
+        },
+        {
+            "weight": 2,
+            "widgets": [
+                {
+                    "title": "Widget 1 title",
+                    "pages": [
+                        {
+                            "title": "Section 1",
+                            "card": {
+                                "type": "AdaptiveCard",
+                                "id": "widget1_section1",
+                                "body": [
+                                    {
+                                        "type": "TextBlock",
+                                        "text": "This is the card of the 1st section in the first widget"
+                                    }
+                                ]
+                            }
+        
+                        }
+                    ]
+                },
+                {
+                    "title": "Widget 2 title",
+                    "pages": [
+                        {
+                            "title": "Section 1",
+                            "card": {
+                                "type": "AdaptiveCard",
+                                "id": "widget1_section1",
+                                "body": [
+                                    {
+                                        "type": "TextBlock",
+                                        "text": "This is the card of the 1st section in the first widget"
+                                    }
+                                ]
+                            }
+        
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "weight": 1,
+            "widgets": [
+            ]
+        }
+    ]
+}

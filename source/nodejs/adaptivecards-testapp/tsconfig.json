@@ -9,5 +9,5 @@
 		"noFallthroughCasesInSwitch": true,
 		"experimentalDecorators": true
 	},
-	"files": ["./src/app.ts"]
+	"files": ["./src/app.ts" ]
 }

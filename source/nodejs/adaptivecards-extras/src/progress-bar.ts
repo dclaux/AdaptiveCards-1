@@ -61,38 +61,38 @@ export class ProgressBar extends Adaptive.CardElement {
 
         this._titleElement = textBlock.render();
 
+        let progressBarElement = document.createElement("div");
+        progressBarElement.style.display = "flex";
+
+        this._leftBarElement = document.createElement("div");
+        this._leftBarElement.style.height = "6px";
+
+        let emphasisForegroundAccentColor = Adaptive.stringToCssColor(this.hostConfig.containerStyles.emphasis.foregroundColors.accent.default);
+
+        if (emphasisForegroundAccentColor) {
+            this._leftBarElement.style.backgroundColor = emphasisForegroundAccentColor;
+        }
+
+        this._rightBarElement = document.createElement("div");
+        this._rightBarElement.style.height = "6px";
+
+        let emphasisBackgroundColor = Adaptive.stringToCssColor(this.hostConfig.containerStyles.emphasis.backgroundColor);
+
+        if (emphasisBackgroundColor) {
+            this._rightBarElement.style.backgroundColor = emphasisBackgroundColor;
+        }
+
+        progressBarElement.append(this._leftBarElement, this._rightBarElement);
+
         if (this._titleElement) {
             this._titleElement.style.marginBottom = "6px";
 
-            let progressBarElement = document.createElement("div");
-            progressBarElement.style.display = "flex";
-
-            this._leftBarElement = document.createElement("div");
-            this._leftBarElement.style.height = "6px";
-
-            let emphasisForegroundAccentColor = Adaptive.stringToCssColor(this.hostConfig.containerStyles.emphasis.foregroundColors.accent.default);
-
-            if (emphasisForegroundAccentColor) {
-                this._leftBarElement.style.backgroundColor = emphasisForegroundAccentColor;
-            }
-
-            this._rightBarElement = document.createElement("div");
-            this._rightBarElement.style.height = "6px";
-
-            let emphasisBackgroundColor = Adaptive.stringToCssColor(this.hostConfig.containerStyles.emphasis.backgroundColor);
-
-            if (emphasisBackgroundColor) {
-                this._rightBarElement.style.backgroundColor = emphasisBackgroundColor;
-            }
-
-            progressBarElement.append(this._leftBarElement, this._rightBarElement);
-
-            element.append(this._titleElement, progressBarElement);
-
-            return element;
+            element.appendChild(this._titleElement);
         }
 
-        return undefined;
+        element.appendChild(progressBarElement);
+
+        return element;
     }
 
     getJsonTypeName(): string {
@@ -104,7 +104,7 @@ export class ProgressBar extends Adaptive.CardElement {
 
         if (this.renderedElement) {
             if (this._titleElement) {
-                if (this.title) {
+                if (!this.title) {
                     this._titleElement.style.display = "none";
                 }
                 else {
