@@ -40,6 +40,16 @@ module.exports = (env, argv) => {
 				commonjs2: "adaptivecards",
 				commonjs: "adaptivecards",
 				root: "AdaptiveCards"
+			},
+			"adaptive-expressions": {
+				commonjs2: "adaptive-expressions",
+				commonjs: "adaptive-expressions",
+				root: "AEL"
+			},
+			"adaptivecards-templating": {
+				commonjs2: "adaptivecards-templating",
+				commonjs: "adaptivecards-templating",
+				root: "ACData"
 			}
 		}
 	}

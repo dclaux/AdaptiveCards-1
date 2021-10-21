@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-import * as Adaptive from "adaptivecards";
-import { AdaptiveCard, SerializationContext, Versions } from "adaptivecards";
+import { SerializationContext } from "adaptivecards";
 import "adaptivecards/dist/adaptivecards.css";
 import * as Dashboard from "./dashboard";
 import * as Shared from "./shared";

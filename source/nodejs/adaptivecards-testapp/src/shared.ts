@@ -330,6 +330,43 @@ export const testPayload = {
                                         "type": "Extras.BarChart"
                                     },
                                     {
+                                        "type": "Extras.List",
+                                        "items": [
+                                            {
+                                                "firstName": "David",
+                                                "lastName": "Claux"
+                                            },
+                                            {
+                                                "firstName": "John",
+                                                "lastName": "Doe"
+                                            },
+                                            {
+                                                "firstName": "Mark",
+                                                "lastName": "Knopfler"
+                                            },
+                                            {
+                                                "firstName": "Dave",
+                                                "lastName": "Grohl"
+                                            }
+                                        ],
+                                        "itemTemplates": [
+                                            {
+                                                "template": {
+                                                    "type": "TextBlock",
+                                                    "text": "${firstName} **${lastName}**",
+                                                    "size": "ExtraLarge"
+                                                }
+                                            },
+                                            {
+                                                "widthThreshold": 150,
+                                                "template": {
+                                                    "type": "TextBlock",
+                                                    "text": "${firstName} **${lastName}** (small screen)"
+                                                }
+                                            }
+                                        ]
+                                    },
+                                    {
                                         "type": "Extras.ProgressBar",
                                         "title": "Hello world",
                                         "value": 50
