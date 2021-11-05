@@ -27,8 +27,12 @@
 		"iterate": "webpack --cache --mode=production --progress && npm run dts",
 		"release": "npm run build && webpack --mode=production && npm run dts"
 	},
+	"peerDependencies": {
+		"adaptivecards": "^2.11.0-alpha.0",
+		"adaptivecards-templating": "^2.3.0-alpha.0"
+	},
 	"dependencies": {
-		"adaptivecards": "^2.11.0-alpha.0"
+		"chart.js": "^3.5.1"
 	},
 	"devDependencies": {
 		"@typescript-eslint/eslint-plugin": "^3.4.0",
@@ -41,6 +45,9 @@
 		"webpack": "^5.47.0",
 		"webpack-cli": "^4.7.2",
 		"webpack-concat-plugin": "^3.0.0",
-		"webpack-dev-server": "^3.11.2"
+		"webpack-dev-server": "^3.11.2",
+		"adaptivecards": "^2.11.0-alpha.0",
+		"adaptive-expressions": "^4.11.0",
+		"adaptivecards-templating": "^2.3.0-alpha.0"
 	}
 }

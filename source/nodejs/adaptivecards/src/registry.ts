@@ -51,10 +51,21 @@ export class CardObjectRegistry<T extends SerializableObject> {
         delete this._items[typeName];
     }
 
+    onCreateInstance?: (sender: CardObjectRegistry<T>, typeName: string, targetVersion: Version) => T | undefined;
+
     createInstance(typeName: string, targetVersion: Version): T | undefined {
         let registrationInfo = this.findByName(typeName);
 
-        return (registrationInfo && registrationInfo.schemaVersion.compareTo(targetVersion) <= 0) ? new registrationInfo.objectType() : undefined;
+        if (!registrationInfo) {
+            if (this.onCreateInstance) {
+                return this.onCreateInstance(this, typeName, targetVersion);
+            }
+        }
+        else {
+            return (registrationInfo.schemaVersion.compareTo(targetVersion) <= 0) ? new registrationInfo.objectType() : undefined;
+        }
+
+        return undefined;
     }
 
     getItemCount(): number {

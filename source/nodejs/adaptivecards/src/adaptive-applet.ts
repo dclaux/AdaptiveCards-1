@@ -4,7 +4,7 @@ import { GlobalSettings } from "./shared";
 import { ChannelAdapter } from "./channel-adapter";
 import { ActivityResponse, IActivityRequest, ActivityRequestTrigger, SuccessResponse, ErrorResponse, LoginRequestResponse } from "./activity-request";
 import { Strings } from "./strings";
-import { SubmitAction, ExecuteAction, SerializationContext, AdaptiveCard, Action, Input, Authentication, TokenExchangeResource, AuthCardButton, CardElement } from "./card-elements";
+import { SubmitAction, ExecuteAction, SerializationContext, AdaptiveCard, Action, Input, Authentication, TokenExchangeResource, AuthCardButton, CardElement, SignalableObject, SignalCallback } from "./card-elements";
 import { Versions } from "./serialization";
 import { HostConfig } from "./host-config";
 
@@ -244,6 +244,12 @@ export class AdaptiveApplet {
                         this.onPrefetchSSOToken(this, this._card.authentication.tokenExchangeResource);
                     }
 
+                    this._card.onSignal = (sender: CardElement, signalableObject: SignalableObject, callback?: SignalCallback) => {
+                        if (this.onSignal) {
+                            this.onSignal(this, signalableObject, callback);
+                        }
+                    }
+    
                     this._card.onExecuteAction = (action: Action) => {
                         // If the user takes an action, cancel any pending automatic refresh
                         this.cancelAutomaticRefresh();
@@ -589,6 +595,7 @@ export class AdaptiveApplet {
     onCreateProgressOverlay?: (sender: AdaptiveApplet, request: IActivityRequest) => HTMLElement | undefined;
     onRemoveProgressOverlay?: (sender: AdaptiveApplet, request: IActivityRequest) => void;
     onRenderManualRefreshButton?: (sender: AdaptiveApplet) => HTMLElement | undefined;
+    onSignal?: (sender: AdaptiveApplet, signalableObject: SignalableObject, callback?: SignalCallback) => void;
     onAction?: (sender: AdaptiveApplet, action: Action) => void;
     onShowManualRefreshButton?: (sender: AdaptiveApplet) => boolean;
     onShowAuthCodeInputDialog?: (sender: AdaptiveApplet, request: IActivityRequest) => boolean;

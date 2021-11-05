@@ -1,7 +1,7 @@
 const path = require("path");
-const HtmlWebpackPlugin = require('html-webpack-plugin');
 // const MiniCssExtractPlugin = require("mini-css-extract-plugin");
-// const CopyWebpackPlugin = require("copy-webpack-plugin");
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const CopyWebpackPlugin = require("copy-webpack-plugin");
 
 module.exports = (env, argv) => {
 	const mode = argv.mode || 'development';
@@ -13,18 +13,14 @@ module.exports = (env, argv) => {
 		mode: mode,
 		target: "web",
 		entry: {
-			"adaptivecards": "./src/adaptivecards.ts"
+			"adaptivecards-testapp": "./src/app.ts",
 		},
 		output: {
-			path: path.resolve(__dirname, "./dist"),
+			path: path.resolve(__dirname, "dist"),
 			filename: devMode ? "[name].js" : "[name].min.js",
 			libraryTarget: "umd",
-			library: "AdaptiveCards",
+			library: "ACTestApp",
 			globalObject: "this"
-		},
-		devtool: devMode ? "inline-source-map" : "source-map",
-		devServer: {
-			contentBase: './dist'
 		},
 		resolve: {
 			extensions: [".ts", ".tsx", ".js"]
@@ -34,45 +30,62 @@ module.exports = (env, argv) => {
 					test: /\.ts$/,
 					loader: "ts-loader",
 					exclude: /(node_modules|__tests__)/
-				},
+				}
 				/*
 				{
 					test: /\.css$/,
 					use: [
 						'style-loader',
 						MiniCssExtractPlugin.loader,
-						'css-loader',
-						//'typings-for-css-modules-loader?modules&namedExport&camelCase'
+						'css-loader'
 					]
 				}
 				*/
 			]
 		},
 		plugins: [
-			/*
 			new CopyWebpackPlugin(
 				{
 					patterns: [
 						{
-							from: 'src/adaptivecards.css',
+							from: 'src/*.css',
 							to: '../lib/',
 							flatten: true
 						},
 						{
-							from: 'src/adaptivecards.css',
+							from: 'src/*.css',
 							to: '../dist/',
 							flatten: true
 						}
 					]
 				}
 			),
+            new HtmlWebpackPlugin({
+				title: "Adaptive Cards test application",
+				template: "./index.html"
+			})
+			/*
+            new MiniCssExtractPlugin({
+				filename: '[name].css'
+			})
 			*/
-			new HtmlWebpackPlugin(
-				{
-					title: "Adaptive Cards Example",
-					template: "./example.html"
-				}
-			)
-		]
-	};
+		],
+		externals: {
+			"adaptivecards": {
+				commonjs2: "adaptivecards",
+				commonjs: "adaptivecards",
+				root: "AdaptiveCards"
+			},
+			"adaptive-expressions": {
+				commonjs2: "adaptive-expressions",
+				commonjs: "adaptive-expressions",
+				root: "AEL"
+			},
+			"adaptivecards-templating": {
+				commonjs2: "adaptivecards-templating",
+				commonjs: "adaptivecards-templating",
+				root: "ACData"
+			}
+		}
+	}
 }

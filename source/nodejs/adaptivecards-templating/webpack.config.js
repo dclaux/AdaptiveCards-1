@@ -8,6 +8,7 @@ module.exports = (env, argv) => {
 
 	return {
 		mode: mode,
+		target: "web",
 		entry: {
 			"adaptivecards-templating": "./src/adaptivecards-templating.ts"
 		},
@@ -39,6 +40,13 @@ module.exports = (env, argv) => {
 					exclude: /(node_modules|__tests__)/
 				}
 			]
+		},
+		externals: {
+			"adaptivecards-templating": {
+				commonjs2: "adaptivecards-templating",
+				commonjs: "adaptivecards-templating",
+				root: "ACData"
+			}
 		}
 	};
 }

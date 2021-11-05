@@ -310,6 +310,10 @@ export abstract class CardElement extends CardObject {
         }
     }
 
+    protected internalMounted() {
+        // Do nothing in base implementation
+    }
+
     /*
      * Called when this element overflows the bottom of the card.
      * maxHeight will be the amount of space still available on the card (0 if
@@ -502,6 +506,10 @@ export abstract class CardElement extends CardObject {
         }
 
         return this._renderedElement;
+    }
+
+    mounted() {
+        this.internalMounted();
     }
 
     updateLayout(processChildren: boolean = true) {
@@ -4181,31 +4189,13 @@ export abstract class Action extends CardObject {
     }
 }
 
-export abstract class SubmitActionBase extends Action {
+export abstract class InputAwareAction extends Action {
     //#region Schema
 
     static readonly dataProperty = new PropertyDefinition(Versions.v1_0, "data");
-    static readonly associatedInputsProperty = new CustomProperty(
-        Versions.v1_3,
-        "associatedInputs",
-        (sender: SerializableObject, property: PropertyDefinition, source: PropertyBag, context: BaseSerializationContext) => {
-            let value = source[property.name];
 
-            if (value !== undefined && typeof value === "string") {
-                return value.toLowerCase() === "none" ? "none" : "auto";
-            }
-
-            return undefined;
-        },
-        (sender: SerializableObject, property: PropertyDefinition, target: PropertyBag, value: string | undefined, context: BaseSerializationContext) => {
-            context.serializeValue(target, property.name, value);
-        });
-
-    @property(SubmitActionBase.dataProperty)
+    @property(InputAwareAction.dataProperty)
     private _originalData?: PropertyBag;
-
-    @property(SubmitActionBase.associatedInputsProperty)
-    associatedInputs?: "auto" | "none";
 
     //#endregion
 
@@ -4214,21 +4204,18 @@ export abstract class SubmitActionBase extends Action {
 
     protected internalGetReferencedInputs(): Dictionary<Input> {
         let result: Dictionary<Input> = {};
+        let current: CardElement | undefined = this.parent;
+        let inputs: Input[] = [];
 
-        if (this.associatedInputs !== "none") {
-            let current: CardElement | undefined = this.parent;
-            let inputs: Input[] = [];
+        while (current) {
+            inputs = inputs.concat(current.getAllInputs(false));
 
-            while (current) {
-                inputs = inputs.concat(current.getAllInputs(false));
+            current = current.parent;
+        }
 
-                current = current.parent;
-            }
-
-            for (let input of inputs) {
-                if (input.id) {
-                    result[input.id] = input;
-                }
+        for (let input of inputs) {
+            if (input.id) {
+                result[input.id] = input;
             }
         }
 
@@ -4266,6 +4253,35 @@ export abstract class SubmitActionBase extends Action {
     }
 }
 
+export abstract class SubmitActionBase extends InputAwareAction {
+    //#region Schema
+
+    static readonly associatedInputsProperty = new CustomProperty(
+        Versions.v1_3,
+        "associatedInputs",
+        (sender: SerializableObject, property: PropertyDefinition, source: PropertyBag, context: BaseSerializationContext) => {
+            let value = source[property.name];
+
+            if (value !== undefined && typeof value === "string") {
+                return value.toLowerCase() === "none" ? "none" : "auto";
+            }
+
+            return undefined;
+        },
+        (sender: SerializableObject, property: PropertyDefinition, target: PropertyBag, value: string | undefined, context: BaseSerializationContext) => {
+            context.serializeValue(target, property.name, value);
+        });
+
+    @property(SubmitActionBase.associatedInputsProperty)
+    associatedInputs?: "auto" | "none";
+
+    //#endregion
+
+    protected internalGetReferencedInputs(): Dictionary<Input> {
+        return this.associatedInputs !== "none" ? super.internalGetReferencedInputs() : {};
+    }
+}
+
 export class SubmitAction extends SubmitActionBase {
     // Note the "weird" way this field is declared is to work around a breaking
     // change introduced in TS 3.1 wrt d.ts generation. DO NOT CHANGE
@@ -4293,6 +4309,42 @@ export class ExecuteAction extends SubmitActionBase {
     getJsonTypeName(): string {
         return ExecuteAction.JsonTypeName;
     }
+}
+
+export type SignalCallback = (isError: boolean, result: any) => void;
+
+export abstract class SignalableObject extends SerializableObject {
+    signal(sender: CardElement, callback?: SignalCallback) {
+        let card = sender.getRootElement() as AdaptiveCard;
+        let onSignalHandler = (card && card.onSignal) ? card.onSignal : AdaptiveCard.onSignal;
+    
+        if (onSignalHandler) {
+            onSignalHandler(sender, this, callback);
+        }
+    }    
+}
+
+export class DataQuery extends SignalableObject {
+    // Note the "weird" way this field is declared is to work around a breaking
+    // change introduced in TS 3.1 wrt d.ts generation. DO NOT CHANGE
+    static readonly JsonTypeName: "Data.Query" = "Data.Query";
+
+    //#region Schema
+
+    static readonly datasetProperty = new StringProperty(Versions.v1_0, "dataset");
+    static readonly filterProperty = new StringProperty(Versions.v1_0, "filter");
+
+    @property(DataQuery.datasetProperty)
+    dataset: string;
+
+    @property(DataQuery.filterProperty)
+    filter?: string;
+
+    protected getSchemaKey(): string {
+        return DataQuery.JsonTypeName;
+    }
+
+    //#endregion
 }
 
 export class OpenUrlAction extends Action {
@@ -5793,6 +5845,8 @@ export class Container extends ContainerBase {
                     Utils.appendChild(element, renderedItem);
 
                     this._renderedItems.push(item);
+
+                    item.mounted();
                 }
             }
         }
@@ -6010,6 +6064,44 @@ export class Container extends ContainerBase {
         }
 
         return false;
+    }
+
+    replaceItem(oldItem: CardElement, newItem: CardElement) {
+        if (!newItem.parent) {
+            if (newItem.isStandalone) {
+                let itemIndex = this._items.indexOf(oldItem);
+                let renderedItemIndex = this._renderedItems.indexOf(oldItem);
+
+                if (itemIndex >= 0 && renderedItemIndex >= 0) {
+                    newItem.setParent(this);
+
+                    this._items[itemIndex] = newItem;
+                    this._renderedItems[renderedItemIndex] = newItem;
+        
+                    oldItem.setParent(undefined);
+
+                    if (!newItem.renderedElement) {
+                        newItem.render();
+                    }
+
+                    if (oldItem.separatorElement && oldItem.separatorElement.parentElement && newItem.separatorElement) {
+                        oldItem.separatorElement.parentElement.replaceChild(newItem.separatorElement, oldItem.separatorElement);
+                    }
+        
+                    if (oldItem.renderedElement && oldItem.renderedElement.parentElement && newItem.renderedElement) {
+                        oldItem.renderedElement.parentElement.replaceChild(newItem.renderedElement, oldItem.renderedElement);
+                    }
+        
+                    this.updateLayout();
+                }
+            }
+            else {
+                throw new Error(Strings.errors.elementTypeNotStandalone(newItem.getJsonTypeName()));
+            }
+        }
+        else {
+            throw new Error(Strings.errors.elementAlreadyParented());
+        }
     }
 
     clear() {
@@ -6971,6 +7063,7 @@ export class AdaptiveCard extends ContainerWithActions {
 
     //#endregion
 
+    static onSignal?: (element: CardElement, signalableObject: SignalableObject, callback?: SignalCallback) => void;
     static onAnchorClicked?: (element: CardElement, anchor: HTMLAnchorElement, ev?: MouseEvent) => boolean;
     static onExecuteAction?: (action: Action) => void;
     static onElementVisibilityChanged?: (element: CardElement) => void;
@@ -7099,6 +7192,7 @@ export class AdaptiveCard extends ContainerWithActions {
         return true;
     }
 
+    onSignal?: (element: CardElement, signalableObject: SignalableObject, callback?: SignalCallback) => void;
     onAnchorClicked?: (element: CardElement, anchor: HTMLAnchorElement, ev?: MouseEvent) => boolean;
     onExecuteAction?: (action: Action) => void;
     onElementVisibilityChanged?: (element: CardElement) => void;

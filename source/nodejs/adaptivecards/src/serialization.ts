@@ -818,6 +818,16 @@ export class SerializableObjectSchema {
     getCount(): number {
         return this._properties.length;
     }
+
+    findProperty(name: string): PropertyDefinition | undefined {
+        for (let property of this._properties) {
+            if (property.name === name) {
+                return property;
+            }
+        }
+
+        return undefined;
+    }
 }
 
 // This is a decorator function, used to map SerializableObject descendant class members to
@@ -890,19 +900,6 @@ export abstract class SerializableObject {
         }
     }
 
-    protected getValue(property: PropertyDefinition): any {
-        return this._propertyBag.hasOwnProperty(property.getInternalName()) ? this._propertyBag[property.getInternalName()] : property.defaultValue;
-    }
-
-    protected setValue(property: PropertyDefinition, value: any) {
-        if (value === undefined || value === null) {
-            delete this._propertyBag[property.getInternalName()];
-        }
-        else {
-            this._propertyBag[property.getInternalName()] = value;
-        }
-    }
-
     protected internalParse(source: PropertyBag, context: BaseSerializationContext) {
         this._propertyBag = {};
         this._rawProperties = GlobalSettings.enableFullJsonRoundTrip ? (source ? source : {}) : {};
@@ -960,6 +957,10 @@ export abstract class SerializableObject {
 
     protected shouldSerialize(context: BaseSerializationContext): boolean {
         return true;
+    }
+
+    protected propertyChanged(property: PropertyDefinition) {
+        // Do nothing in base implementation
     }
 
     maxVersion: Version = SerializableObject.defaultMaxVersion;
@@ -1065,5 +1066,22 @@ export abstract class SerializableObject {
         }
 
         return schema;
+    }
+    
+    getValue(property: PropertyDefinition): any {
+        return this._propertyBag.hasOwnProperty(property.getInternalName()) ? this._propertyBag[property.getInternalName()] : property.defaultValue;
+    }
+
+    setValue(property: PropertyDefinition, value: any, notifyPropertyChanged: boolean = false) {
+        if (value === undefined || value === null) {
+            delete this._propertyBag[property.getInternalName()];
+        }
+        else {
+            this._propertyBag[property.getInternalName()] = value;
+        }
+
+        if (notifyPropertyChanged) {
+            this.propertyChanged(property);
+        }
     }
 }

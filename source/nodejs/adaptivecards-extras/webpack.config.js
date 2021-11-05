@@ -8,16 +8,16 @@ module.exports = (env, argv) => {
 
 	return {
 		mode: mode,
+		target: "web",
 		entry: {
 			"adaptivecards-extras": "./src/adaptivecards-extras.ts"
 		},
 		output: {
 			path: path.resolve(__dirname, "./dist"),
 			filename: devMode ? "[name].js" : "[name].min.js",
-			library: "ACExtras",
 			libraryTarget: "umd",
-			globalObject: "this",
-			// umdNamedDefine: true
+			library: "ACExtras",
+			globalObject: "this"
 		},
 		devtool: devMode ? "inline-source-map" : "source-map",
 		devServer: {
@@ -40,6 +40,11 @@ module.exports = (env, argv) => {
 				commonjs2: "adaptivecards",
 				commonjs: "adaptivecards",
 				root: "AdaptiveCards"
+			},
+			"adaptivecards-templating": {
+				commonjs2: "adaptivecards-templating",
+				commonjs: "adaptivecards-templating",
+				root: "ACData"
 			}
 		}
 	}
