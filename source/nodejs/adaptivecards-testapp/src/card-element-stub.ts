@@ -1,11 +1,52 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-import * as Adaptive from "adaptivecards";
+import { CardElement, property, SerializableObject, SerializableObjectCollectionProperty, SerializationContext, StringProperty, Versions } from "adaptivecards";
+import * as Shared from "./shared";
 
-interface ILibraryInfo {
+class LibraryInfo extends SerializableObject {
+    //#region Schema
+
+    static readonly patternProperty = new StringProperty(Versions.v1_0, "pattern");
+    static readonly jsPathProperty = new StringProperty(Versions.v1_0, "jsPath");
+    static readonly lighCssPathProperty = new StringProperty(Versions.v1_0, "lightCssPath");
+    static readonly darkCssPathProperty = new StringProperty(Versions.v1_0, "darkCssPath");
+    static readonly rootProperty = new StringProperty(Versions.v1_0, "root");
+
+    @property(LibraryInfo.patternProperty)
+    pattern: string;
+
+    @property(LibraryInfo.jsPathProperty)
     jsPath: string;
-    cssPath?: string;
+
+    @property(LibraryInfo.lighCssPathProperty)
+    lightCssPath?: string;
+
+    @property(LibraryInfo.darkCssPathProperty)
+    darkCssPath?: string;
+
+    @property(LibraryInfo.rootProperty)
     root: string;
+
+    protected getSchemaKey(): string {
+        return "LibraryInfo";
+    }
+
+    //#endregion
+}
+
+class ExtensionCatalog extends SerializableObject {
+    //#region Schema
+
+    static readonly entriesProperty = new SerializableObjectCollectionProperty(Versions.v1_0, "entries", LibraryInfo);
+
+    @property(ExtensionCatalog.entriesProperty)
+    entries: LibraryInfo[];
+
+    protected getSchemaKey(): string {
+        return "ExtensionsCatalog";
+    }
+
+    //#endregion
 }
 
 type LibraryImportCompleteCallback = (isError: boolean, errorMessage?: string) => void;
@@ -24,7 +65,7 @@ class LibraryImporter {
 
     readonly listeners: LibraryImportCompleteCallback[] = [];
 
-    constructor(readonly libraryInfo: ILibraryInfo, readonly serializationContext: Adaptive.SerializationContext) { }
+    constructor(readonly libraryInfo: LibraryInfo, readonly serializationContext: SerializationContext) { }
 
     async start() {
         if (!this._isStarted) {
@@ -47,10 +88,10 @@ class LibraryImporter {
 
             document.head.appendChild(scriptTag);
 
-            if (this.libraryInfo.cssPath) {
+            if (this.libraryInfo.lightCssPath) {
                 let linkTag = document.createElement("link");
                 linkTag.rel = "stylesheet";
-                linkTag.href = this.libraryInfo.cssPath;
+                linkTag.href = this.libraryInfo.lightCssPath;
 
                 document.head.appendChild(linkTag);
             }
@@ -62,35 +103,53 @@ class LibraryImporter {
     }
 }
 
-class ExternalLibraryManager {
-    private static _instance = new ExternalLibraryManager();
+class ExtensionManager {
+    private static _catalog?: ExtensionCatalog;
+    private static _imports: LibraryImporter[] = [];
 
-    static importLibrary(typeName: string, serializationContext: Adaptive.SerializationContext, callback: LibraryImportCompleteCallback) {
-        ExternalLibraryManager._instance.internalImportLibraryAsync(typeName, serializationContext, callback);
-    }
+    private static getLibraryInfo(typeName: string): LibraryInfo | undefined {
+        if (ExtensionManager.catalog) {
+            for (let entry of ExtensionManager.catalog.entries) {
+                let regEx = new RegExp(entry.pattern);
 
-    private _imports: LibraryImporter[] = [];
-
-    private getLibraryInfo(typeName: string): ILibraryInfo | undefined {
-        // TODO: Need a real registry
-        if (typeName.startsWith("Extras.")) {
-            return {
-                jsPath: "../../adaptivecards-extras/dist/adaptivecards-extras.js",
-                cssPath: "../../adaptivecards-extras/src/adaptivecards-extras.css",
-                root: "ACExtras"
+                if (regEx.test(typeName)) {
+                    return entry;
+                }
             }
         }
 
         return undefined;
     }
 
-    private internalImportLibraryAsync(typeName: string, serializationContext: Adaptive.SerializationContext, callback: LibraryImportCompleteCallback) {
-        let libraryInfo = this.getLibraryInfo(typeName);
+    private static async loadCatalog() {
+        if (ExtensionManager._catalog === undefined) {
+            if (window.location.protocol.startsWith("file")) {
+                ExtensionManager._catalog = new ExtensionCatalog();
+                ExtensionManager._catalog.parse(Shared.localExtensionCatalog);
+            }
+            else {
+                let response = await fetch("extensions-catalog.json");
+
+                if (response.status === 200) {
+                    let json = await response.json();
+
+                    ExtensionManager._catalog = new ExtensionCatalog();
+                    ExtensionManager._catalog.parse(json);
+                }
+                else {
+                    throw new Error("Unable to load extensions catalog.");
+                }
+            }
+        }
+    }
+
+    private static internalImportLibrary(typeName: string, serializationContext: SerializationContext, callback: LibraryImportCompleteCallback) {
+        let libraryInfo = ExtensionManager.getLibraryInfo(typeName);
 
         if (libraryInfo) {
             let importer: LibraryImporter | undefined = undefined;
 
-            for (let existingImporter of this._imports) {
+            for (let existingImporter of ExtensionManager._imports) {
                 if (existingImporter.libraryInfo.jsPath === libraryInfo.jsPath) {
                     importer = existingImporter;
 
@@ -115,13 +174,21 @@ class ExternalLibraryManager {
             callback(true, "No external library registered for type " + typeName);
         }
     }
+
+    static importLibrary(typeName: string, serializationContext: SerializationContext, callback: LibraryImportCompleteCallback) {
+        ExtensionManager.loadCatalog().then(() => ExtensionManager.internalImportLibrary(typeName, serializationContext, callback));
+    }
+
+    static get catalog(): ExtensionCatalog | undefined {
+        return ExtensionManager._catalog;
+    }
 }
 
-export class CardElementStub extends Adaptive.CardElement {
-    private _serializationContext: Adaptive.SerializationContext;
+export class CardElementStub extends CardElement {
+    private _serializationContext: SerializationContext;
     private _stubbedElementPayload: any;
 
-    protected internalParse(source: any, context: Adaptive.SerializationContext) {
+    protected internalParse(source: any, context: SerializationContext) {
         super.internalParse(source, context);
 
         this._serializationContext = context;
@@ -138,7 +205,7 @@ export class CardElementStub extends Adaptive.CardElement {
     }
 
     protected internalMounted() {
-        ExternalLibraryManager.importLibrary(
+        ExtensionManager.importLibrary(
             this.typeName,
             this._serializationContext,
             (isError: boolean, errorMessage?: string) => {

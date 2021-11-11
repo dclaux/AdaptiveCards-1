@@ -1,0 +1,11 @@
+{
+    "entries": [
+        {
+            "pattern": "^Extras.",
+            "jsPath": "https://acstaticresources.blob.core.windows.net/$web/adaptivecards-extras.js",
+            "lightCssPath": "https://acstaticresources.blob.core.windows.net/$web/adaptivecards-extras.css",
+            "darkCssPath": "https://acstaticresources.blob.core.windows.net/$web/adaptivecards-extras.css",
+            "root": "ACExtras"
+        }
+    ]
+}

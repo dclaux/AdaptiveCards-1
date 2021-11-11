@@ -56,6 +56,11 @@ module.exports = (env, argv) => {
 							from: 'src/*.css',
 							to: '../dist/',
 							flatten: true
+						},
+						{
+							from: 'src/extensions-catalog.json',
+							to: '../dist/',
+							flatten: true
 						}
 					]
 				}
