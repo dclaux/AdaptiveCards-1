@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-// import { CardElement, CardObjectRegistry, SerializationContext, Version } from "adaptivecards";
-// import "adaptivecards/dist/adaptivecards.css";
 import * as Dashboard from "./dashboard";
 import * as Shared from "./shared";
+import * as Adaptive from "adaptivecards";
+import { TestChannelAdapter } from "./test-channel-adapter";
 
 window.onload = function() {
+    Adaptive.GlobalSettings.applets.refresh.mode = Adaptive.RefreshMode.Disabled;
+    
     let btn = document.getElementById("serializeDashboard");
 
     if (btn) {
@@ -24,7 +26,7 @@ window.onload = function() {
         async (value: Response) => {
             let dashboardPayload = await value.json();
 
-            let dashboard = new Dashboard.AdaptiveDashboard();
+            let dashboard = new Dashboard.AdaptiveDashboard(new TestChannelAdapter("https://veryfakebot.azurewebsites.net/botapi/"));
             dashboard.parse(dashboardPayload);
         
             let dashboardHost = document.getElementById("dashboardHost");

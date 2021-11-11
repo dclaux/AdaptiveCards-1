@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-import { DataQuery, CardElement, NumProperty, property, PropertyDefinition, SerializableObject, SerializableObjectCollectionProperty, SerializableObjectProperty, SerializationContext, Versions, BaseSerializationContext, SignalableObject, StringProperty, TextBlock } from "adaptivecards";
+import { DataQuery, CardElement, NumProperty, property, PropertyDefinition, SerializableObject, SerializableObjectCollectionProperty, SerializableObjectProperty, SerializationContext, Versions, BaseSerializationContext, SignalableObject, StringProperty, TextBlock, Input } from "adaptivecards";
 import { Template } from "adaptivecards-templating";
 
 export class ItemTemplate extends SerializableObject {
@@ -40,7 +40,50 @@ export class ItemTemplate extends SerializableObject {
     }
 }
 
-export class List extends CardElement {
+export class ListItem {
+    private clicked() {
+        if (this.onClick) {
+            this.onClick(this);
+        }
+    }
+
+    private _isSelected: boolean = false;
+
+    onClick: (sender: ListItem) => void;
+
+    constructor(private readonly owner: List, private readonly data: any, readonly renderedElement: HTMLElement) {
+        renderedElement.onclick = () => {
+            this.clicked();
+        }
+    }
+
+    get title(): string | undefined {
+        return typeof this.data === "object" && this.data.hasOwnProperty("title") ? this.data["title"] : undefined;
+    }
+
+    get value(): string | undefined {
+        return typeof this.data === "object" && this.data.hasOwnProperty("value") ? this.data["value"] : undefined;
+    }
+
+    get isSelected(): boolean {
+        return this._isSelected;
+    }
+
+    set isSelected(value: boolean) {
+        if (value !== this._isSelected) {
+            this._isSelected = value;
+
+            if (this._isSelected) {
+                this.renderedElement.classList.add("selected");
+            }
+            else {
+                this.renderedElement.classList.remove("selected");
+            }
+        }
+    }
+}
+
+export class List extends Input {
     static readonly JsonTypeName = "Extras.List";
 
     //#region Schema
@@ -71,22 +114,26 @@ export class List extends CardElement {
     private _currentTemplate?: ItemTemplate;
     private _resizeObserver: ResizeObserver;
     private _fetchedItems?: any;
+    private _renderedItems: ListItem[];
+    private _selectedItem?: ListItem;
 
     private renderEmptyContentMessage(message: string) {
-        if (this.renderedElement) {
-            this.renderedElement.innerHTML = "";
+        if (this.renderedInputControlElement) {
+            this.renderedInputControlElement.innerHTML = "";
 
             let textBlock = new TextBlock();
             textBlock.text = message;
             textBlock.render();
 
             if (textBlock.renderedElement) {
-                this.renderedElement.appendChild(textBlock.renderedElement);
+                this.renderedInputControlElement.appendChild(textBlock.renderedElement);
             }
         }
     }
 
     private renderItems() {
+        this._renderedItems = [];
+
         let itemsArray: any[] = Array.isArray(this._fetchedItems) ? this._fetchedItems : [ this._fetchedItems ];
 
         if (itemsArray.length === 0) {
@@ -101,8 +148,8 @@ export class List extends CardElement {
             return;
         }
         
-        if (this.renderedElement) {
-            this.renderedElement.innerHTML = "";
+        if (this.renderedInputControlElement) {
+            this.renderedInputControlElement.innerHTML = "";
 
             let isFirstItem = true;
 
@@ -116,6 +163,7 @@ export class List extends CardElement {
 
                     if (renderedItem !== undefined) {
                         let itemHost = document.createElement("div");
+                        itemHost.className = "ac-extras-list-itemHost";
 
                         if (!isFirstItem) {
                             itemHost.style.marginTop = "6px";
@@ -123,7 +171,20 @@ export class List extends CardElement {
 
                         itemHost.appendChild(renderedItem);
 
-                        this.renderedElement.appendChild(itemHost);
+                        this.renderedInputControlElement.appendChild(itemHost);
+
+                        let listItem = new ListItem(this, item, itemHost);
+                        listItem.onClick = (sender: ListItem) => {
+                            for (let clickedItem of this._renderedItems) {
+                                clickedItem.isSelected = clickedItem === sender;
+                            }
+
+                            this._selectedItem = sender;
+
+                            this.valueChanged();
+                        }
+
+                        this._renderedItems.push(listItem);
 
                         isFirstItem = false;
                     }
@@ -184,28 +245,38 @@ export class List extends CardElement {
 
     protected internalRender(): HTMLElement | undefined {
         let element = document.createElement("div");
+        element.className = "ac-extras-list-root";
         element.style.overflowY = "auto";
+        element.style.width = "100%";
 
         if (this.maxHeight !== undefined && this.maxHeight > 0) {
             element.style.maxHeight = this.maxHeight + "px";
         }
 
-        this._resizeObserver = new ResizeObserver(
-            entries => {
-                if (entries.length > 0) {
-                    let template = this.selectTemplate(entries[0].contentRect.width);
-
-                    if (template !== this._currentTemplate) {
-                        this._currentTemplate = template;
-
-                        this.fetchAndRenderItems();
-                    }
-                }
-            });
-
-        this._resizeObserver.observe(element);
-
         return element;
+    }
+
+    protected overrideInternalRender(): HTMLElement | undefined {
+        let renderedElement = super.overrideInternalRender();
+
+        if (renderedElement !== undefined) {
+            this._resizeObserver = new ResizeObserver(
+                entries => {
+                    if (entries.length > 0) {
+                        let template = this.selectTemplate(entries[0].contentRect.width);
+
+                        if (template !== this._currentTemplate) {
+                            this._currentTemplate = template;
+
+                            this.fetchAndRenderItems();
+                        }
+                    }
+                });
+
+            this._resizeObserver.observe(renderedElement);
+        }
+
+        return renderedElement;
     }
 
     protected propertyChanged(property: PropertyDefinition) {
@@ -218,5 +289,17 @@ export class List extends CardElement {
 
     getJsonTypeName(): string {
         return List.JsonTypeName;
+    }
+
+    isSet(): boolean {
+        return this.value !== undefined;
+    }
+
+    get selectedItem(): ListItem | undefined {
+        return this._selectedItem ;
+    }
+
+    get value(): string | undefined {
+        return this._selectedItem !== undefined ? this._selectedItem.value : undefined;
     }
 }

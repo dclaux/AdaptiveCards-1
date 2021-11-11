@@ -2532,6 +2532,7 @@ export abstract class Input extends CardElement implements IInput {
     static readonly labelProperty = new StringProperty(Versions.v1_3, "label", true);
     static readonly isRequiredProperty = new BoolProperty(Versions.v1_3, "isRequired", false);
     static readonly errorMessageProperty = new StringProperty(Versions.v1_3, "errorMessage", true);
+    static readonly valueChangedActionProperty = new ActionProperty(Versions.v1_5, "valueChangedAction", [ "Action.ShowCard" ]);
 
     @property(Input.labelProperty)
     label?: string;
@@ -2541,6 +2542,9 @@ export abstract class Input extends CardElement implements IInput {
 
     @property(Input.errorMessageProperty)
     errorMessage?: string;
+
+    @property(Input.valueChangedActionProperty)
+    valueChangedAction?: Action;
 
     //#endregion
 
@@ -2674,6 +2678,10 @@ export abstract class Input extends CardElement implements IInput {
         }
 
         raiseInputValueChangedEvent(this);
+        
+        if (this.valueChangedAction) {
+            this.valueChangedAction.execute();
+        }
     }
 
     protected resetValidationFailureCue() {

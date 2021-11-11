@@ -1,8 +1,12 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 import { SerializableObject, StringProperty, Versions, property, NumProperty, SerializableObjectCollectionProperty, AdaptiveApplet, PropertyDefinition, SerializationContext,
-    Action, InputAwareAction, DataQuery, SignalableObject, SignalCallback, CardElement, CardObjectRegistry, Version } from "adaptivecards";
+    InputAwareAction, DataQuery, SignalableObject, SignalCallback, CardElement, CardObjectRegistry, Version, ExecuteAction, IActivityRequest, ChannelAdapter, PropertyBag,
+    BaseSerializationContext, HostConfig, Action, StringArrayProperty, AdaptiveCard, RefreshDefinition } from "adaptivecards";
 import { CardElementStub } from "./card-element-stub";
-// import * as Extras from "adaptivecards-extras";
 import * as ACData from "adaptivecards-templating";
+import { hostConfig } from "./shared";
+import { EvaluationContext, Script } from "./expression-engine";
 
 export class PropertyUpdate extends SerializableObject {
     //#region Schema
@@ -25,6 +29,23 @@ export class PropertyUpdate extends SerializableObject {
     }
 
     //#endregion
+}
+
+function createInputValueMap(action: InputAwareAction): object {
+    let referencedInputs = action.getReferencedInputs();
+    let inputValueMap = {};
+
+    if (referencedInputs !== undefined) {
+        for (let key of Object.keys(referencedInputs)) {
+            let input = referencedInputs[key];
+
+            if (input.id && input.isSet()) {
+                inputValueMap[input.id] = typeof input.value === "string" ? input.value : input.value.toString();
+            }
+        }
+    }
+
+    return inputValueMap;
 }
 
 export class UpdateElementsAction extends InputAwareAction {
@@ -65,18 +86,7 @@ export class UpdateElementsAction extends InputAwareAction {
                             targetElement.setValue(propertyDefinition, expression, true);
                         }
                         else {
-                            let referencedInputs = this.getReferencedInputs();
-                            let inputValueMap = {};
-
-                            if (referencedInputs !== undefined) {
-                                for (let key of Object.keys(referencedInputs)) {
-                                    let input = referencedInputs[key];
-                    
-                                    if (input.id && input.isSet()) {
-                                        inputValueMap[input.id] = typeof input.value === "string" ? input.value : input.value.toString();
-                                    }
-                                }
-                            }
+                            let inputValueMap = createInputValueMap(this);
                 
                             let context = {
                                 $root: {
@@ -104,6 +114,65 @@ export class UpdateElementsAction extends InputAwareAction {
                 }
             }
         }
+    }
+}
+
+export class ScriptAction extends InputAwareAction {
+    //#region Schema
+
+    static readonly scriptProperty = new StringArrayProperty(Versions.v1_0, "script");
+
+    @property(ScriptAction.scriptProperty)
+    script: string[];
+
+    //#endregion
+
+    public static JsonTypeName: "Action.Script" = "Action.Script";
+
+    getJsonTypeName(): string {
+        return ScriptAction.JsonTypeName;
+    }
+
+    execute() {
+        super.execute();
+
+        let root = this.getRootObject();
+        let evaluationContext: EvaluationContext | undefined = undefined;
+        let dashboard: AdaptiveDashboard | undefined = undefined;
+
+        if (root instanceof WidgetPageAppletCard) {
+            dashboard = root.parentDashboard;
+
+            if (dashboard) {
+                evaluationContext = new EvaluationContext();
+
+                evaluationContext.registerFunction(
+                    "refreshWidgetPage",
+                    (cardId: string, verb?: string) => { dashboard?.refreshWidgetPage(cardId, verb); });
+                evaluationContext.registerFunction(
+                    "setEnv",
+                    (varName: string, varValue: any) => { dashboard?.setEnv(varName, varValue); });
+            }
+        }
+
+        if (!evaluationContext) {
+            evaluationContext = new EvaluationContext();
+        }
+
+        evaluationContext.registerFunction(
+            "execute",
+            (verb) => {
+                let action = new ExecuteAction();
+                action.verb = verb;
+                action.setParent(this.parent);
+                action.execute();
+            }
+        );
+
+        evaluationContext.$root = createInputValueMap(this);
+
+        let s = new Script(this.script);
+        s.run(evaluationContext);
     }
 }
 
@@ -145,11 +214,39 @@ export abstract class RenderableObject extends TypedSerializableObject {
     }
 }
 
+export class WidgetPageAppletCard extends AdaptiveCard {
+    constructor(readonly parentApplet: WidgetPageApplet) {
+        super();
+    }
+
+    get parentDashboard(): AdaptiveDashboard | undefined {
+        return this.parentApplet.parentDashboard;
+    }
+}
+
+export class WidgetPageApplet extends AdaptiveApplet {
+    protected createAdaptiveCardInstance(): AdaptiveCard {
+        return new WidgetPageAppletCard(this);
+    }
+
+    constructor(readonly parentWidgetPage: WidgetPage) {
+        super();
+    }
+
+    get parentDashboard(): AdaptiveDashboard | undefined {
+        return this.parentWidgetPage.parentDashboard;
+    }
+}
+
 export class WidgetPage extends RenderableObject {
     //#region Schema
 
+    static readonly idProperty = new StringProperty(Versions.v1_0, "id");
     static readonly titleProperty = new StringProperty(Versions.v1_0, "title");
     static readonly cardProperty = new PropertyDefinition(Versions.v1_0, "card");
+
+    @property(WidgetPage.idProperty)
+    id?: string;
 
     @property(WidgetPage.titleProperty)
     title?: string;
@@ -159,26 +256,7 @@ export class WidgetPage extends RenderableObject {
 
     //#endregion
 
-    private static _serializationContext?: SerializationContext;
-
-    static get serializationContext(): SerializationContext {
-        if (!WidgetPage._serializationContext) {
-            WidgetPage._serializationContext = new SerializationContext();
-
-            // No dynamic loading for now... I just can't make it work.
-
-            WidgetPage._serializationContext.elementRegistry.onCreateInstance = (sender: CardObjectRegistry<CardElement>, typeName: string, targetVersion: Version) => {
-                return new CardElementStub(typeName);
-            }
-
-            // Extras.registerAllFeatures(WidgetPage._serializationContext.elementRegistry, WidgetPage._serializationContext.actionRegistry);
-
-            WidgetPage._serializationContext.actionRegistry.register(UpdateElementsAction.JsonTypeName, UpdateElementsAction);
-        }
-
-        return WidgetPage._serializationContext;
-    }
-    
+    private _parentWidget?: DashboardWidget;
     private _applet?: AdaptiveApplet;
 
     protected internalRender(): HTMLElement | undefined {
@@ -189,12 +267,23 @@ export class WidgetPage extends RenderableObject {
         element.style.boxShadow = "0px 5px 10px #cccccc";
 
         if (!this._applet && this.card) {
-            this._applet = new AdaptiveApplet();
+            this._applet = new WidgetPageApplet(this);
+            this._applet.hostConfig = new HostConfig(hostConfig);
+            this._applet.channelAdapter = this.parentWidget?.parentSection?.parentDashboard?.channelAdapter;
             this._applet.onCreateSerializationContext = (sender: AdaptiveApplet) => {
-                return WidgetPage.serializationContext;
+                return AdaptiveDashboard.serializationContext;
+            }
+            this._applet.onPrepareActivityRequest = (sender: AdaptiveApplet, request: IActivityRequest, action: ExecuteAction) => {
+                let dashboard = this.parentDashboard;
+
+                if (dashboard) {
+                    dashboard.prepareActivityRequest(sender, request, action);
+                }
+
+                return true;
             }
             this._applet.onSignal = (sender: AdaptiveApplet, signalableObject: SignalableObject, callback?: SignalCallback) => {
-                console.log(JSON.stringify(signalableObject.toJSON(WidgetPage.serializationContext), undefined, 4));
+                console.log(JSON.stringify(signalableObject.toJSON(AdaptiveDashboard.serializationContext), undefined, 4));
 
                 if (signalableObject instanceof DataQuery) {
                     let url = "https://veryfakebot.azurewebsites.net/botapi/data/" + signalableObject.dataset;
@@ -243,6 +332,32 @@ export class WidgetPage extends RenderableObject {
     getJsonTypeName(): string {
         return "Page";
     }
+
+    refreshWidgetPage(pageId: string, verb?: string) {
+        if (this.id === pageId && this._applet && this._applet.card) {
+            if (verb !== undefined) {
+                if (this._applet.card.refresh === undefined) {
+                    this._applet.card.refresh = new RefreshDefinition();
+                }
+                
+                if (this._applet.card.refresh.action === undefined) {
+                    this._applet.card.refresh.action = new ExecuteAction();
+                }
+
+                this._applet.card.refresh.action.verb = verb;
+            }
+
+            this._applet.refreshCard();
+        }
+    }
+
+    get parentWidget(): DashboardWidget | undefined {
+        return this._parentWidget;
+    }
+
+    get parentDashboard(): AdaptiveDashboard | undefined {
+        return this.parentWidget ? this.parentWidget.parentDashboard : undefined;
+    }
 }
 
 export class DashboardWidget extends RenderableObject {
@@ -255,15 +370,25 @@ export class DashboardWidget extends RenderableObject {
     id?: string;
 
     @property(DashboardWidget.pagesProperty)
-    pages: WidgetPage[];
+    private _pages: WidgetPage[];
 
     //#endregion
+
+    private _parentSection?: DashboardSection;
+
+    protected internalParse(source: PropertyBag, context: BaseSerializationContext) {
+        super.internalParse(source, context);
+
+        for (let page of this._pages) {
+            page["_parentWidget"] = this;
+        }
+    }
 
     protected internalRender(): HTMLElement | undefined {
         let element = document.createElement("div");
         element.style.minWidth = "0";
 
-        for (let page of this.pages) {
+        for (let page of this._pages) {
             page.render();
 
             if (page.renderedElement) {
@@ -276,6 +401,20 @@ export class DashboardWidget extends RenderableObject {
 
     getJsonTypeName(): string {
         return "Widget";
+    }
+
+    refreshWidgetPage(pageId: string, verb?: string) {
+        for (let page of this._pages) {
+            page.refreshWidgetPage(pageId, verb);
+        }
+    }
+
+    get parentSection(): DashboardSection | undefined {
+        return this._parentSection;
+    }
+
+    get parentDashboard(): AdaptiveDashboard | undefined {
+        return this.parentSection ? this.parentSection.parentDashboard : undefined;
     }
 }
 
@@ -293,9 +432,19 @@ export class DashboardSection extends RenderableObject {
     minColumnWidth: number = 0;
 
     @property(DashboardSection.widgetsProperty)
-    widgets: DashboardWidget[];
+    private _widgets: DashboardWidget[];
 
     //#endregion
+
+    private _parentDashboard?: AdaptiveDashboard;
+
+    protected internalParse(source: PropertyBag, context: BaseSerializationContext) {
+        super.internalParse(source, context);
+
+        for (let widget of this._widgets) {
+            widget["_parentSection"] = this;
+        }
+    }
 
     protected internalRender(): HTMLElement | undefined {
         let element = document.createElement("div");
@@ -303,7 +452,7 @@ export class DashboardSection extends RenderableObject {
         element.style.gridTemplateRows = "max-content";
         element.style.gridGap = AdaptiveDashboard.GridGap;
 
-        for (let widget of this.widgets) {
+        for (let widget of this._widgets) {
             let renderedWidget = widget.render();
 
             if (renderedWidget !== undefined) {
@@ -316,6 +465,24 @@ export class DashboardSection extends RenderableObject {
 
     getJsonTypeName(): string {
         return "Section";
+    }
+
+    getWidgetAt(index: number): DashboardWidget {
+        return this._widgets[index];
+    }
+
+    refreshWidgetPage(pageId: string, verb?: string) {
+        for (let widget of this._widgets) {
+            widget.refreshWidgetPage(pageId, verb);
+        }
+    }
+
+    get parentDashboard(): AdaptiveDashboard | undefined {
+        return this._parentDashboard;
+    }
+
+    get widgetCount(): number {
+        return this._widgets.length;
     }
 }
 
@@ -337,12 +504,37 @@ export class AdaptiveDashboard extends RenderableObject {
     title?: string;
 
     @property(AdaptiveDashboard.sectionsProperty)
-    sections: DashboardSection[];
+    private _sections: DashboardSection[];
 
     //#endregion
 
+    private static _serializationContext?: SerializationContext;
+
+    static get serializationContext(): SerializationContext {
+        if (!AdaptiveDashboard._serializationContext) {
+            AdaptiveDashboard._serializationContext = new SerializationContext();
+            AdaptiveDashboard._serializationContext.elementRegistry.onCreateInstance = (sender: CardObjectRegistry<CardElement>, typeName: string, targetVersion: Version) => {
+                return new CardElementStub(typeName);
+            }
+
+            AdaptiveDashboard._serializationContext.actionRegistry.register(UpdateElementsAction.JsonTypeName, UpdateElementsAction);
+            AdaptiveDashboard._serializationContext.actionRegistry.register(ScriptAction.JsonTypeName, ScriptAction);
+        }
+
+        return AdaptiveDashboard._serializationContext;
+    }
+    
     private _resizeObserver: ResizeObserver;
     private _rows?: Row[];
+    private _environment = {};
+
+    protected internalParse(source: PropertyBag, context: BaseSerializationContext) {
+        super.internalParse(source, context);
+
+        for (let section of this._sections) {
+            section["_parentDashboard"] = this;
+        }
+    }
 
     protected internalRender(): HTMLElement | undefined {
         let element = document.createElement("div");
@@ -351,16 +543,12 @@ export class AdaptiveDashboard extends RenderableObject {
         element.style.display = "grid";
         element.style.gridGap = AdaptiveDashboard.GridGap;
 
-        let colorIndex = 0;
-
-        for (let section of this.sections) {
+        for (let section of this._sections) {
             let renderedSection = section.render();
 
             if (renderedSection !== undefined) {
                 element.appendChild(renderedSection);
             }
-
-            colorIndex++;
         }
 
         return element;
@@ -370,14 +558,14 @@ export class AdaptiveDashboard extends RenderableObject {
         if (this.renderedElement !== undefined) {
             let totalWeight = 0;
 
-            for (let section of this.sections) {
+            for (let section of this._sections) {
                 totalWeight += section.weight;
             }
 
             let rows: Row[] = [];
             let currentRow = new Row();
 
-            for (let section of this.sections) {
+            for (let section of this._sections) {
                 let sectionWidth = section.weight / totalWeight * availableWidth;
 
                 if (sectionWidth >= section.minColumnWidth) {
@@ -421,11 +609,7 @@ export class AdaptiveDashboard extends RenderableObject {
             if (reRenderRows) {
                 this.renderedElement.innerHTML = "";
 
-                let rowIndex = 1;
-
                 for (let row of rows) {
-                    let columnIndex = 1;
-
                     row.htmlElement = document.createElement("div");
                     row.htmlElement.style.display = "grid";
                     row.htmlElement.style.gridGap = AdaptiveDashboard.GridGap;
@@ -438,15 +622,11 @@ export class AdaptiveDashboard extends RenderableObject {
 
                             row.htmlElement.appendChild(section.renderedElement);
                         }
-
-                        columnIndex++;
                     }
 
                     row.htmlElement.style.gridTemplateColumns = templateColumns;
                         
                     this.renderedElement.appendChild(row.htmlElement);
-
-                    rowIndex++;
                 }
 
                 this._rows = rows;
@@ -460,12 +640,12 @@ export class AdaptiveDashboard extends RenderableObject {
                                 section.renderedElement.style.removeProperty("grid-template-columns");
                             }
                             else {
-                                let perWidgetWidth = availableWidth / row.sections[0].widgets.length;
+                                let perWidgetWidth = availableWidth / row.sections[0].widgetCount;
 
                                 if (perWidgetWidth >= section.minColumnWidth) {
                                     let templateColumns = "";
 
-                                    for (let widget of section.widgets) {
+                                    for (let i = 0; i < section.widgetCount; i++) {
                                         templateColumns += "1fr ";
                                     }
 
@@ -480,6 +660,10 @@ export class AdaptiveDashboard extends RenderableObject {
                 }
             }
         }
+    }
+
+    constructor(readonly channelAdapter: ChannelAdapter) {
+        super();
     }
 
     getJsonTypeName(): string {
@@ -501,5 +685,19 @@ export class AdaptiveDashboard extends RenderableObject {
         }
 
         return renderedElement;
+    }
+
+    refreshWidgetPage(cardId: string, verb?: string) {
+        for (let section of this._sections) {
+            section.refreshWidgetPage(cardId, verb);
+        }
+    }
+
+    prepareActivityRequest(sender: AdaptiveApplet, request: IActivityRequest, action: ExecuteAction) {
+        request["environment"] = this._environment;
+    }
+
+    setEnv(varName: string, varValue: any) {
+        this._environment[varName] = varValue;
     }
 }

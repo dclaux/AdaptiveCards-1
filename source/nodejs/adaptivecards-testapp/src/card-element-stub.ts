@@ -1,7 +1,10 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 import * as Adaptive from "adaptivecards";
 
 interface ILibraryInfo {
-    path: string;
+    jsPath: string;
+    cssPath?: string;
     root: string;
 }
 
@@ -10,7 +13,6 @@ type LibraryImportCompleteCallback = (isError: boolean, errorMessage?: string) =
 class LibraryImporter {
     private _isComplete: boolean = false;
     private _isStarted: boolean = false;
-    private _libraryRoot: any;
 
     protected completed(isError: boolean, errorMessage?: string) {
         this._isComplete = true;
@@ -29,7 +31,7 @@ class LibraryImporter {
             this._isStarted = true;
 
             let scriptTag = document.createElement("script");            
-            scriptTag.src = this.libraryInfo.path;
+            scriptTag.src = this.libraryInfo.jsPath;
             scriptTag.onload = (ev) => {
                 let root = window[this.libraryInfo.root];
 
@@ -39,11 +41,19 @@ class LibraryImporter {
                     this.completed(false);
                 }
                 else {
-                    this.completed(true, "Unable to load external library " + this.libraryInfo.path);
+                    this.completed(true, "Unable to load external library " + this.libraryInfo.jsPath);
                 }
             }
 
             document.head.appendChild(scriptTag);
+
+            if (this.libraryInfo.cssPath) {
+                let linkTag = document.createElement("link");
+                linkTag.rel = "stylesheet";
+                linkTag.href = this.libraryInfo.cssPath;
+
+                document.head.appendChild(linkTag);
+            }
         }
     }
 
@@ -65,7 +75,8 @@ class ExternalLibraryManager {
         // TODO: Need a real registry
         if (typeName.startsWith("Extras.")) {
             return {
-                path: "../../adaptivecards-extras/dist/adaptivecards-extras.js",
+                jsPath: "../../adaptivecards-extras/dist/adaptivecards-extras.js",
+                cssPath: "../../adaptivecards-extras/src/adaptivecards-extras.css",
                 root: "ACExtras"
             }
         }
@@ -80,7 +91,7 @@ class ExternalLibraryManager {
             let importer: LibraryImporter | undefined = undefined;
 
             for (let existingImporter of this._imports) {
-                if (existingImporter.libraryInfo === libraryInfo) {
+                if (existingImporter.libraryInfo.jsPath === libraryInfo.jsPath) {
                     importer = existingImporter;
 
                     break;

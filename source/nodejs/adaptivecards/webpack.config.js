@@ -1,7 +1,7 @@
 const path = require("path");
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-// const MiniCssExtractPlugin = require("mini-css-extract-plugin");
-// const CopyWebpackPlugin = require("copy-webpack-plugin");
+const MiniCssExtractPlugin = require("mini-css-extract-plugin");
+const CopyWebpackPlugin = require("copy-webpack-plugin");
 
 module.exports = (env, argv) => {
 	const mode = argv.mode || 'development';
@@ -35,7 +35,6 @@ module.exports = (env, argv) => {
 					loader: "ts-loader",
 					exclude: /(node_modules|__tests__)/
 				},
-				/*
 				{
 					test: /\.css$/,
 					use: [
@@ -45,11 +44,9 @@ module.exports = (env, argv) => {
 						//'typings-for-css-modules-loader?modules&namedExport&camelCase'
 					]
 				}
-				*/
 			]
 		},
 		plugins: [
-			/*
 			new CopyWebpackPlugin(
 				{
 					patterns: [
@@ -66,7 +63,6 @@ module.exports = (env, argv) => {
 					]
 				}
 			),
-			*/
 			new HtmlWebpackPlugin(
 				{
 					title: "Adaptive Cards Example",

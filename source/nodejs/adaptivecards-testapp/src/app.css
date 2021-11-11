@@ -2,10 +2,6 @@
     box-sizing: border-box;
 }
 
-html {
-    overflow: hidden !important;
-}
-
 body {
     font-family: 'Segoe UI', sans-serif;
     font-size: 14px;

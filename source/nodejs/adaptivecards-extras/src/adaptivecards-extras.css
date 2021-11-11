@@ -1,0 +1,14 @@
+.ac-extras-list-root {
+}
+
+.ac-extras-list-itemHost {
+    padding: 5px;
+}
+
+.ac-extras-list-itemHost:hover {
+    background-color: #f5f5f5;
+}
+
+.ac-extras-list-itemHost.selected {
+    background-color: #eeeeee;
+}

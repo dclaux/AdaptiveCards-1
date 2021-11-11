@@ -225,7 +225,7 @@ export class AdaptiveApplet {
 
         if (this._cardPayload) {
             try {
-                let card = new AdaptiveCard();
+                let card = this.createAdaptiveCardInstance();
 
                 if (this.hostConfig) {
                     card.hostConfig = this.hostConfig;
@@ -579,6 +579,10 @@ export class AdaptiveApplet {
         }
     }
 
+    protected createAdaptiveCardInstance(): AdaptiveCard {
+        return new AdaptiveCard();
+    }
+
     readonly renderedElement: HTMLElement;
 
     hostConfig?: HostConfig;
@@ -619,7 +623,7 @@ export class AdaptiveApplet {
     }
 
     refreshCard() {
-        if (this._card && this._card.refresh) {
+        if (this._card && this._card.refresh && this._card.refresh.action && this._card.refresh.action.prepareForExecution()) {
             this.internalExecuteAction(this._card.refresh.action, ActivityRequestTrigger.Manual, 0);
         }
     }
