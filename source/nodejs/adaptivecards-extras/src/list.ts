@@ -204,12 +204,8 @@ export class List extends Input {
                 this.itemsSource.signal(
                     this,
                     (isError: boolean, result: any) => {
-                        console.log("Callback received");
-    
                         if (!isError) {
                             this._fetchedItems = result;
-
-                            console.log("Fetched items: " + JSON.stringify(this._fetchedItems));
 
                             this.renderItems();
                         }

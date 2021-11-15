@@ -690,13 +690,13 @@ export abstract class CardElement extends CardObject {
 
 export class ActionProperty extends PropertyDefinition {
     parse(sender: SerializableObject, source: PropertyBag, context: SerializationContext): Action | undefined {
-        let parent = <CardElement>sender;
+        let parent: CardElement | undefined = sender instanceof Action ? sender.parent : <CardElement>sender;
 
-        return context.parseAction(
+        return parent !== undefined ? context.parseAction(
             parent,
             source[this.name],
             this.forbiddenActionTypes,
-            parent.isDesignMode());
+            parent.isDesignMode()) : undefined;
     }
 
     toJSON(sender: SerializableObject, target: PropertyBag, value: Action | undefined, context: SerializationContext) {
@@ -4020,15 +4020,15 @@ export abstract class Action extends CardObject {
         return context.actionRegistry.findByName(this.getJsonTypeName()) !== undefined;
     }
 
-    protected raiseExecuteActionEvent() {
+    protected raiseExecuteActionEvent(parameters: any = undefined) {
         if (this.onExecute) {
-            this.onExecute(this);
+            this.onExecute(this, parameters);
         }
 
-        raiseExecuteActionEvent(this);
+        raiseExecuteActionEvent(this, parameters);
     }
 
-    onExecute: (sender: Action) => void;
+    onExecute: (sender: Action, parameters: any) => void;
 
     getHref(): string | undefined {
         return "";
@@ -4093,12 +4093,12 @@ export abstract class Action extends CardObject {
         this.setupElementForAccessibility(buttonElement);
     }
 
-    execute() {
+    execute(parameters: any = undefined) {
         if (this._actionCollection) {
             this._actionCollection.actionExecuted(this);
         }
 
-        this.raiseExecuteActionEvent();
+        this.raiseExecuteActionEvent(parameters);
     }
 
     prepareForExecution(): boolean {
@@ -4487,7 +4487,7 @@ export class ToggleVisibilityAction extends Action {
         this.updateAriaControlsAttribute();
     }
 
-    execute() {
+    execute(parameters: any = undefined) {
         if (this.parent) {
             for (let elementId of Object.keys(this.targetElements)) {
                 let targetElement = this.parent.getRootElement().getElementById(elementId);
@@ -4791,7 +4791,7 @@ class OverflowAction extends Action {
         return ShowCardAction.JsonTypeName;
     }
 
-    execute() {
+    execute(parameters: any = undefined) {
         const shouldDisplayPopupMenu = !raiseDisplayOverflowActionMenuEvent(this, this.renderedElement);
 
         if (shouldDisplayPopupMenu && this.renderedElement) {
@@ -4807,7 +4807,7 @@ class OverflowAction extends Action {
                     contextMenu.closePopup(false);
 
                     if (actionToExecute.isEnabled) {
-                        actionToExecute.execute();
+                        actionToExecute.execute(parameters);
                     }
                 };
 
@@ -6644,12 +6644,12 @@ function raiseAnchorClickedEvent(element: CardElement, anchor: HTMLAnchorElement
     return onAnchorClickedHandler !== undefined ? onAnchorClickedHandler(element, anchor, ev) : false;
 }
 
-function raiseExecuteActionEvent(action: Action) {
+function raiseExecuteActionEvent(action: Action, parameters: any = undefined) {
     let card = action.parent ? action.parent.getRootElement() as AdaptiveCard : undefined;
     let onExecuteActionHandler = (card && card.onExecuteAction) ? card.onExecuteAction : AdaptiveCard.onExecuteAction;
 
     if (action.prepareForExecution() && onExecuteActionHandler) {
-        onExecuteActionHandler(action);
+        onExecuteActionHandler(action, parameters);
     }
 }
 
@@ -7073,7 +7073,7 @@ export class AdaptiveCard extends ContainerWithActions {
 
     static onSignal?: (element: CardElement, signalableObject: SignalableObject, callback?: SignalCallback) => void;
     static onAnchorClicked?: (element: CardElement, anchor: HTMLAnchorElement, ev?: MouseEvent) => boolean;
-    static onExecuteAction?: (action: Action) => void;
+    static onExecuteAction?: (action: Action, parameters: any) => void;
     static onElementVisibilityChanged?: (element: CardElement) => void;
     static onImageLoaded?: (image: Image) => void;
     static onInlineCardExpanded?: (action: ShowCardAction, isExpanded: boolean) => void;
@@ -7202,7 +7202,7 @@ export class AdaptiveCard extends ContainerWithActions {
 
     onSignal?: (element: CardElement, signalableObject: SignalableObject, callback?: SignalCallback) => void;
     onAnchorClicked?: (element: CardElement, anchor: HTMLAnchorElement, ev?: MouseEvent) => boolean;
-    onExecuteAction?: (action: Action) => void;
+    onExecuteAction?: (action: Action, parameters: any) => void;
     onElementVisibilityChanged?: (element: CardElement) => void;
     onImageLoaded?: (image: Image) => void;
     onInlineCardExpanded?: (action: ShowCardAction, isExpanded: boolean) => void;

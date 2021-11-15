@@ -405,7 +405,7 @@ a.ac-anchor:visited:active {
     top: 0;
     width: 100%;
     height: 100%;
-    background-color: #cccccc;
+    background-color: rgba(255, 255, 255, 0.6);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -448,4 +448,46 @@ a.ac-anchor:visited:active {
 
 .aaf-cardHost *:hover::-webkit-scrollbar-thumb {
     background-color: #CDCDCD;
+}
+
+.ac-dashboard-widgetHost {
+    border: 1px solid #dddddd;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0px 5px 10px #cccccc;
+    min-width: 0;
+    background-color: white;
+}
+
+.ac-dashboard-widgetHeaderHost {
+    padding: 20px 20px 0 20px;
+}
+
+.ac-dashboard-widgetHeaderTitle {
+    font-size: 26px;
+    font-weight: bold;
+}
+
+.ac-dashboard-tabSet {
+    display: flex;
+    min-width: 0;
+    white-space: nowrap;
+    
+}
+
+.ac-dashboard-tabSet-itemHost {
+    border-bottom: 2px solid transparent;
+    margin-left: 20px;
+    padding-bottom: 2px;
+    overflow: hidden;
+}
+
+.ac-dashboard-tabSet-itemHost.selected {
+    border-bottom: 2px solid steelblue;
+}
+
+.ac-dashboard-tabSet-itemCaption {
+    font-size: 18px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }

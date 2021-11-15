@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 import { SerializableObject, StringProperty, Versions, property, NumProperty, SerializableObjectCollectionProperty, AdaptiveApplet, PropertyDefinition, SerializationContext,
     InputAwareAction, DataQuery, SignalableObject, SignalCallback, CardElement, CardObjectRegistry, Version, ExecuteAction, IActivityRequest, ChannelAdapter, PropertyBag,
-    BaseSerializationContext, HostConfig, Action, StringArrayProperty, AdaptiveCard, RefreshDefinition } from "adaptivecards";
+    BaseSerializationContext, HostConfig, Action, StringArrayProperty, AdaptiveCard, RefreshDefinition, ActionProperty } from "adaptivecards";
 import { CardElementStub } from "./card-element-stub";
 import * as ACData from "adaptivecards-templating";
 import { hostConfig } from "./shared";
 import { EvaluationContext, Script } from "./expression-engine";
+import * as Teams from "@microsoft/teams-js";
 
 export class PropertyUpdate extends SerializableObject {
     //#region Schema
@@ -58,8 +59,6 @@ export class UpdateElementsAction extends InputAwareAction {
 
     //#endregion
 
-    // Note the "weird" way this field is declared is to work around a breaking
-    // change introduced in TS 3.1 wrt d.ts generation. DO NOT CHANGE
     static readonly JsonTypeName: "Action.UpdateElements" = "Action.UpdateElements";
 
     getJsonTypeName(): string {
@@ -78,8 +77,6 @@ export class UpdateElementsAction extends InputAwareAction {
                     let propertyDefinition = schema.findProperty(update.propertyName);
 
                     if (propertyDefinition !== undefined) {
-                        console.log("Evaluating " + update.propertyValue);
-
                         let expression = ACData.Template.parseInterpolatedString(update.propertyValue);
 
                         if (typeof expression === "string") {
@@ -94,24 +91,115 @@ export class UpdateElementsAction extends InputAwareAction {
                                 }
                             };
 
-                            console.log("Eval context: " + JSON.stringify(context));
-
                             let { value, error } = ACData.Template.tryEvaluateExpression(
                                 expression,
                                 context,
                                 false);
                             
                             if (error === undefined) {
-                                console.log("Evaluated value: " + value);
-
                                 targetElement.setValue(propertyDefinition, value, true);
-                            }
-                            else {
-                                console.log("Eval failed: " + error);
                             }
                         }                      
                     }
                 }
+            }
+        }
+    }
+}
+
+export class TaskModuleDimensionProperty extends PropertyDefinition {
+    parse(sender: SerializableObject, source: PropertyBag, context: BaseSerializationContext): Teams.TaskModuleDimension | number | undefined {
+        let value = source[this.name];
+
+        if (value !== undefined) {
+            if (typeof value === "number") {
+                return value;
+            }
+
+            if (typeof value === "string") {
+                switch (value.toLowerCase()) {
+                    case "small":
+                        return Teams.TaskModuleDimension.Small;
+                    case "medium":
+                        return Teams.TaskModuleDimension.Medium;
+                    case "large":
+                        return Teams.TaskModuleDimension.Large;
+                }
+            }
+        }
+
+        return this.defaultValue;
+    }
+
+    constructor(
+        readonly targetVersion: Version,
+        readonly name: string,
+        readonly defaultValue?: Teams.TaskModuleDimension | number,
+        readonly onGetInitialValue?: ((sender: SerializableObject) => Teams.TaskModuleDimension | number) | undefined) {
+        super(targetVersion, name, defaultValue, onGetInitialValue);
+    }
+}
+
+export class StartTaskAction extends Action {
+    //#region Schema
+
+    static readonly taskTitleProperty = new PropertyDefinition(Versions.v1_0, "taskTitle");
+    static readonly cardProperty = new PropertyDefinition(Versions.v1_0, "card");
+    static readonly widthProperty = new TaskModuleDimensionProperty(Versions.v1_0, "width");
+    static readonly heightProperty = new TaskModuleDimensionProperty(Versions.v1_0, "height");
+    static readonly successActionProperty = new ActionProperty(Versions.v1_0, "successAction");
+    static readonly errorActionProperty = new ActionProperty(Versions.v1_0, "errorAction");
+
+    @property(StartTaskAction.taskTitleProperty)
+    taskTitle: string;
+
+    @property(StartTaskAction.cardProperty)
+    card: any;
+
+    @property(StartTaskAction.widthProperty)
+    width?: Teams.TaskModuleDimension | number;
+
+    @property(StartTaskAction.heightProperty)
+    height?: Teams.TaskModuleDimension | number;
+
+    @property(StartTaskAction.successActionProperty)
+    successAction?: Action;
+
+    @property(StartTaskAction.errorActionProperty)
+    errorAction?: Action;
+
+    //#endregion
+
+    public static JsonTypeName: "Action.StartTask" = "Action.StartTask";
+
+    getJsonTypeName(): string {
+        return StartTaskAction.JsonTypeName;
+    }
+
+    execute() {
+        if (typeof this.card === "object") {
+            try {
+                Teams.tasks.startTask(
+                    {
+                        title: this.taskTitle,
+                        card: JSON.stringify(this.card),
+                        height: this.height,
+                        width: this.width
+                    },
+                    (err: string, result: string) => {
+                        if (!err) {
+                            if (this.successAction) {
+                                this.successAction.execute(result);
+                            }
+                        }
+                        else if (this.errorAction) {
+                            this.errorAction.execute(result);
+                        }
+                    }
+                )
+            }
+            catch (error) {
+                console.error("Action.StartTask failed: " + error);
             }
         }
     }
@@ -133,8 +221,8 @@ export class ScriptAction extends InputAwareAction {
         return ScriptAction.JsonTypeName;
     }
 
-    execute() {
-        super.execute();
+    execute(parameters: any = undefined) {
+        super.execute(parameters);
 
         let root = this.getRootObject();
         let evaluationContext: EvaluationContext | undefined = undefined;
@@ -147,8 +235,23 @@ export class ScriptAction extends InputAwareAction {
                 evaluationContext = new EvaluationContext();
 
                 evaluationContext.registerFunction(
+                    "selectWidgetPage",
+                    (pageId: string, verb?: string) => {
+                        let page = dashboard?.findWidgetPage(pageId);
+
+                        if (page !== undefined && page.parentWidget !== undefined) {
+                            page.parentWidget.selectPage(page);
+                        }
+                    });    
+                evaluationContext.registerFunction(
                     "refreshWidgetPage",
-                    (cardId: string, verb?: string) => { dashboard?.refreshWidgetPage(cardId, verb); });
+                    (pageId: string, verb?: string) => {
+                        let page = dashboard?.findWidgetPage(pageId);
+
+                        if (page !== undefined) {
+                            page.refresh(verb);
+                        }
+                    });
                 evaluationContext.registerFunction(
                     "setEnv",
                     (varName: string, varValue: any) => { dashboard?.setEnv(varName, varValue); });
@@ -170,6 +273,7 @@ export class ScriptAction extends InputAwareAction {
         );
 
         evaluationContext.$root = createInputValueMap(this);
+        evaluationContext.$root["$parameters"] = parameters;
 
         let s = new Script(this.script);
         s.run(evaluationContext);
@@ -203,8 +307,10 @@ export abstract class RenderableObject extends TypedSerializableObject {
 
     protected abstract internalRender(): HTMLElement | undefined;
 
-    render(): HTMLElement | undefined {
-        this._renderedElement = this.internalRender();
+    render(forceReRender: boolean = false): HTMLElement | undefined {
+        if (this._renderedElement === undefined || forceReRender) {
+            this._renderedElement = this.internalRender();
+        }
 
         return this._renderedElement;
     }
@@ -260,12 +366,6 @@ export class WidgetPage extends RenderableObject {
     private _applet?: AdaptiveApplet;
 
     protected internalRender(): HTMLElement | undefined {
-        let element = document.createElement("div");
-        element.style.border = "1px solid #dddddd";
-        element.style.borderRadius = "4px";
-        element.style.overflow = "hidden";
-        element.style.boxShadow = "0px 5px 10px #cccccc";
-
         if (!this._applet && this.card) {
             this._applet = new WidgetPageApplet(this);
             this._applet.hostConfig = new HostConfig(hostConfig);
@@ -300,15 +400,8 @@ export class WidgetPage extends RenderableObject {
 
                             let dataPayload = await value.json();
 
-                            console.log("JSON retrieved: " + JSON.stringify(dataPayload));
-
                             if (callback) {
-                                console.log("Invoking callback");
-
                                 callback(false, dataPayload);
-                            }
-                            else {
-                                console.log("No callback provided");
                             }
                         },
                         (reason: any) => {
@@ -322,19 +415,19 @@ export class WidgetPage extends RenderableObject {
             if (this._applet.renderedElement !== undefined) {
                 this._applet.renderedElement.style.minWidth = "0";
 
-                element.appendChild(this._applet.renderedElement);
+                return this._applet.renderedElement;
             }
         }
 
-        return element;
+        return undefined;
     }
 
     getJsonTypeName(): string {
         return "Page";
     }
 
-    refreshWidgetPage(pageId: string, verb?: string) {
-        if (this.id === pageId && this._applet && this._applet.card) {
+    refresh(verb?: string) {
+        if (this._applet && this._applet.card) {
             if (verb !== undefined) {
                 if (this._applet.card.refresh === undefined) {
                     this._applet.card.refresh = new RefreshDefinition();
@@ -360,14 +453,174 @@ export class WidgetPage extends RenderableObject {
     }
 }
 
+class TabSetItem {
+    private _renderedElement?: HTMLElement;
+    private _isSelected: boolean = false;
+
+    protected updateLayout() {
+        if (this.renderedElement) {
+            if (this.isSelected) {
+                this.renderedElement.classList.add("selected");
+            }
+            else {
+                this.renderedElement.classList.remove("selected");
+            }
+        }
+    }
+
+    protected selectedChanged() {
+        this.updateLayout();
+
+        if (this.onSelectedChanged) {
+            this.onSelectedChanged(this);
+        }
+    }
+
+    protected internalRender(): HTMLElement | undefined {
+        let element = document.createElement("div");
+        element.className = "ac-dashboard-tabSet-itemHost";
+        element.onclick = (ev: MouseEvent) => {
+            this.isSelected = true;
+        }
+
+        let captionElement = document.createElement("div");
+        captionElement.className = "ac-dashboard-tabSet-itemCaption";
+
+        if (this.title) {
+            captionElement.innerText = this.title;
+        }
+
+        element.appendChild(captionElement);
+
+        return element;
+    }
+
+    onSelectedChanged?: (sender: TabSetItem) => void;
+
+    constructor(readonly title?: string) {}
+
+    render(): HTMLElement | undefined {
+        this._renderedElement = this.internalRender();
+
+        this.updateLayout();
+
+        return this._renderedElement;
+    }
+
+    get isSelected(): boolean {
+        return this._isSelected;
+    }
+
+    set isSelected(value: boolean) {
+        if (this._isSelected !== value) {
+            this._isSelected = value;
+
+            this.selectedChanged();
+        }
+    }
+
+    get renderedElement(): HTMLElement | undefined {
+        return this._renderedElement;
+    }
+}
+
+class TabSet {
+    private _items: TabSetItem[] = [];
+    private _renderedElement?: HTMLElement;
+    private _selectedItem?: TabSetItem;
+
+    protected internalRender(): HTMLElement | undefined {
+        let element = document.createElement("div");
+        element.className = "ac-dashboard-tabSet";
+        /*
+        element.style.display = "flex";
+        element.style.flexDirection = "row";
+        */
+
+        for (let item of this._items) {
+            item.render();
+
+            if (item.renderedElement) {
+                element.appendChild(item.renderedElement);
+            }
+        }
+
+        return element;
+    }
+
+    protected selectedItemChanged() {
+        if (this.onSelectedItemChanged) {
+            this.onSelectedItemChanged(this);
+        }
+    }
+
+    onSelectedItemChanged?: (sender: TabSet) => void;
+
+    render(): HTMLElement | undefined {
+        this._renderedElement = this.internalRender();
+
+        return this._renderedElement;
+    }
+
+    clear() {
+        this._items = [];
+    }
+
+    add(item: TabSetItem) {
+        this._items.push(item);
+
+        if (this._items.length === 1) {
+            item.isSelected = true;
+        }
+
+        item.onSelectedChanged = (sender: TabSetItem) => {
+            if (sender.isSelected) {
+                this._selectedItem = sender;
+                
+                for (let item of this._items) {
+                    if (item !== sender) {
+                        item.isSelected = false;
+                    }
+                }
+
+                this.selectedItemChanged();
+            }
+        }
+    }
+
+    get(index: number): TabSetItem {
+        return this._items[index];
+    }
+
+    get count(): number {
+        return this._items.length;
+    }
+
+    get renderedElement(): HTMLElement | undefined {
+        return this._renderedElement;
+    }
+
+    get selectedItem(): TabSetItem | undefined {
+        return this._selectedItem;
+    }
+
+    get selectedItemIndex(): number {
+        return this._selectedItem ? this._items.indexOf(this._selectedItem) : -1;
+    }
+}
+
 export class DashboardWidget extends RenderableObject {
     //#region Schema
 
     static readonly idProperty = new StringProperty(Versions.v1_0, "id");
+    static readonly titleProperty = new StringProperty(Versions.v1_0, "title");
     static readonly pagesProperty = new SerializableObjectCollectionProperty(Versions.v1_0, "pages", WidgetPage);
 
     @property(DashboardWidget.idProperty)
     id?: string;
+
+    @property(DashboardWidget.titleProperty)
+    title?: string;
 
     @property(DashboardWidget.pagesProperty)
     private _pages: WidgetPage[];
@@ -375,37 +628,105 @@ export class DashboardWidget extends RenderableObject {
     //#endregion
 
     private _parentSection?: DashboardSection;
+    private _tabSet: TabSet;
+    private _pageHostElement?: HTMLElement;
 
     protected internalParse(source: PropertyBag, context: BaseSerializationContext) {
         super.internalParse(source, context);
 
+        this._tabSet.clear();
+
         for (let page of this._pages) {
             page["_parentWidget"] = this;
+
+            this._tabSet.add(new TabSetItem(page.title));
         }
     }
 
     protected internalRender(): HTMLElement | undefined {
         let element = document.createElement("div");
-        element.style.minWidth = "0";
+        element.className = "ac-dashboard-widgetHost";
 
-        for (let page of this._pages) {
-            page.render();
+        let headerHostElement = document.createElement("div");
+        headerHostElement.className = "ac-dashboard-widgetHeaderHost";
+        headerHostElement.style.display = "flex";
+        headerHostElement.style.flexDirection = "row";
+        headerHostElement.style.alignItems = "baseline";
 
-            if (page.renderedElement) {
-                element.appendChild(page.renderedElement);
+        let headerTitleElement = document.createElement("div");
+        headerTitleElement.className = "ac-dashboard-widgetHeaderTitle";
+
+        if (this.title) {
+            headerTitleElement.innerText = this.title;
+        }
+
+        headerHostElement.appendChild(headerTitleElement);
+
+        if (this._pages.length > 1) {
+            this._tabSet.render();
+
+            if (this._tabSet.renderedElement) {
+                headerHostElement.appendChild(this._tabSet.renderedElement);
             }
         }
 
+        element.appendChild(headerHostElement);
+
+        this._pageHostElement = document.createElement("div");
+
+        if (this._pages.length > 0) {
+            let renderedPageElement = this._pages[0].render();
+
+            if (renderedPageElement) {
+                this._pageHostElement.appendChild(renderedPageElement);
+            }
+        }
+
+        element.appendChild(this._pageHostElement);
+
         return element;
+    }
+
+    constructor() {
+        super();
+
+        this._tabSet = new TabSet();
+        this._tabSet.onSelectedItemChanged = (sender: TabSet) => {
+            if (this._pageHostElement) {
+                this._pageHostElement.innerHTML = "";
+
+                let index = sender.selectedItemIndex;
+
+                if (index >= 0) {
+                    let renderedPageElement = this._pages[index].render();
+
+                    if (renderedPageElement) {
+                        this._pageHostElement.appendChild(renderedPageElement);
+                    }
+                }
+            }
+        }
     }
 
     getJsonTypeName(): string {
         return "Widget";
     }
 
-    refreshWidgetPage(pageId: string, verb?: string) {
+    findWidgetPage(pageId: string): WidgetPage | undefined {
         for (let page of this._pages) {
-            page.refreshWidgetPage(pageId, verb);
+            if (page.id === pageId) {
+                return page;
+            }
+        }
+
+        return undefined;
+    }
+
+    selectPage(page: WidgetPage) {
+        let index = this._pages.indexOf(page);
+
+        if (index >= 0) {
+            this._tabSet.get(index).isSelected = true;
         }
     }
 
@@ -471,10 +792,18 @@ export class DashboardSection extends RenderableObject {
         return this._widgets[index];
     }
 
-    refreshWidgetPage(pageId: string, verb?: string) {
+    findWidgetPage(pageId: string): WidgetPage | undefined {
+        let result: WidgetPage | undefined = undefined;
+
         for (let widget of this._widgets) {
-            widget.refreshWidgetPage(pageId, verb);
+            result = widget.findWidgetPage(pageId);
+
+            if (result !== undefined) {
+                break;
+            }
         }
+
+        return result;
     }
 
     get parentDashboard(): AdaptiveDashboard | undefined {
@@ -519,6 +848,7 @@ export class AdaptiveDashboard extends RenderableObject {
 
             AdaptiveDashboard._serializationContext.actionRegistry.register(UpdateElementsAction.JsonTypeName, UpdateElementsAction);
             AdaptiveDashboard._serializationContext.actionRegistry.register(ScriptAction.JsonTypeName, ScriptAction);
+            AdaptiveDashboard._serializationContext.actionRegistry.register(StartTaskAction.JsonTypeName, StartTaskAction);
         }
 
         return AdaptiveDashboard._serializationContext;
@@ -687,10 +1017,18 @@ export class AdaptiveDashboard extends RenderableObject {
         return renderedElement;
     }
 
-    refreshWidgetPage(cardId: string, verb?: string) {
+    findWidgetPage(pageId: string): WidgetPage | undefined {
+        let result: WidgetPage | undefined = undefined;
+
         for (let section of this._sections) {
-            section.refreshWidgetPage(cardId, verb);
+            result = section.findWidgetPage(pageId);
+
+            if (result !== undefined) {
+                break;
+            }
         }
+
+        return result;
     }
 
     prepareActivityRequest(sender: AdaptiveApplet, request: IActivityRequest, action: ExecuteAction) {
@@ -701,3 +1039,5 @@ export class AdaptiveDashboard extends RenderableObject {
         this._environment[varName] = varValue;
     }
 }
+
+Teams.initialize();

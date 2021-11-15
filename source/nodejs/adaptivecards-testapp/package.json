@@ -22,8 +22,9 @@
 		"webpack-dev-server": "^3.11.2"
 	},
 	"dependencies": {
+		"@microsoft/teams-js": "^1.11.0",
+		"adaptive-expressions": "^4.11.0",
 		"adaptivecards": "^2.11.0-alpha.0",
-		"adaptivecards-templating": "^2.3.0-alpha.0",
-		"adaptive-expressions": "^4.11.0"
+		"adaptivecards-templating": "^2.3.0-alpha.0"
 	}
 }
