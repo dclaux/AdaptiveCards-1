@@ -1,4 +1,4 @@
-import { Authentication, AuthCardButton, ExecuteAction, TokenExchangeResource } from "./card-elements";
+import { Authentication, AuthCardButton, TokenExchangeResource, UniversalAction } from "./card-elements";
 
 export enum ActivityRequestTrigger {
     Automatic = "automatic",
@@ -6,7 +6,7 @@ export enum ActivityRequestTrigger {
 }
 
 export interface IActivityRequest {
-    readonly action: ExecuteAction;
+    readonly action: UniversalAction;
     readonly trigger: ActivityRequestTrigger;
     readonly attemptNumber: number;
     readonly consecutiveRefreshes: number;

@@ -662,10 +662,6 @@ export abstract class CardElement extends CardObject {
         return false;
     }
 
-    get isStandalone(): boolean {
-        return true;
-    }
-
     get isInline(): boolean {
         return false;
     }
@@ -3841,6 +3837,8 @@ export const enum ActionButtonState {
 
 export type ActionType = { new(): Action };
 
+export type ActionExecutionCallback = (isError: boolean, result: any) => void;
+
 export abstract class Action extends CardObject {
     //#region Schema
 
@@ -4020,15 +4018,15 @@ export abstract class Action extends CardObject {
         return context.actionRegistry.findByName(this.getJsonTypeName()) !== undefined;
     }
 
-    protected raiseExecuteActionEvent(parameters: any = undefined) {
+    protected raiseExecuteActionEvent(parameters?: any, callback?: ActionExecutionCallback) {
         if (this.onExecute) {
-            this.onExecute(this, parameters);
+            this.onExecute(this, parameters, callback);
         }
 
-        raiseExecuteActionEvent(this, parameters);
+        raiseExecuteActionEvent(this, parameters, callback);
     }
 
-    onExecute: (sender: Action, parameters: any) => void;
+    onExecute: (sender: Action, parameters: any, callback?: ActionExecutionCallback) => void;
 
     getHref(): string | undefined {
         return "";
@@ -4093,12 +4091,12 @@ export abstract class Action extends CardObject {
         this.setupElementForAccessibility(buttonElement);
     }
 
-    execute(parameters: any = undefined) {
+    execute(parameters?: any, callback?: ActionExecutionCallback) {
         if (this._actionCollection) {
             this._actionCollection.actionExecuted(this);
         }
 
-        this.raiseExecuteActionEvent(parameters);
+        this.raiseExecuteActionEvent(parameters, callback);
     }
 
     prepareForExecution(): boolean {
@@ -4300,7 +4298,12 @@ export class SubmitAction extends SubmitActionBase {
     }
 }
 
-export class ExecuteAction extends SubmitActionBase {
+export abstract class UniversalAction extends SubmitActionBase {
+    // This is the base class for all actions that can be executed via the
+    // adaptiveCards/action activity
+}
+
+export class ExecuteAction extends UniversalAction {
     // Note the "weird" way this field is declared is to work around a breaking
     // change introduced in TS 3.1 wrt d.ts generation. DO NOT CHANGE
     static readonly JsonTypeName: "Action.Execute" = "Action.Execute";
@@ -4319,20 +4322,7 @@ export class ExecuteAction extends SubmitActionBase {
     }
 }
 
-export type SignalCallback = (isError: boolean, result: any) => void;
-
-export abstract class SignalableObject extends SerializableObject {
-    signal(sender: CardElement, callback?: SignalCallback) {
-        let card = sender.getRootElement() as AdaptiveCard;
-        let onSignalHandler = (card && card.onSignal) ? card.onSignal : AdaptiveCard.onSignal;
-    
-        if (onSignalHandler) {
-            onSignalHandler(sender, this, callback);
-        }
-    }    
-}
-
-export class DataQuery extends SignalableObject {
+export class DataQuery extends UniversalAction {
     // Note the "weird" way this field is declared is to work around a breaking
     // change introduced in TS 3.1 wrt d.ts generation. DO NOT CHANGE
     static readonly JsonTypeName: "Data.Query" = "Data.Query";
@@ -4348,11 +4338,15 @@ export class DataQuery extends SignalableObject {
     @property(DataQuery.filterProperty)
     filter?: string;
 
-    protected getSchemaKey(): string {
+    //#endregion
+
+    getJsonTypeName(): string {
         return DataQuery.JsonTypeName;
     }
 
-    //#endregion
+    get isStandalone(): boolean {
+        return false;
+    }
 }
 
 export class OpenUrlAction extends Action {
@@ -4487,7 +4481,7 @@ export class ToggleVisibilityAction extends Action {
         this.updateAriaControlsAttribute();
     }
 
-    execute(parameters: any = undefined) {
+    execute(parameters?: any, callback?: ActionExecutionCallback) {
         if (this.parent) {
             for (let elementId of Object.keys(this.targetElements)) {
                 let targetElement = this.parent.getRootElement().getElementById(elementId);
@@ -4791,7 +4785,7 @@ class OverflowAction extends Action {
         return ShowCardAction.JsonTypeName;
     }
 
-    execute(parameters: any = undefined) {
+    execute(parameters?: any, callback?: ActionExecutionCallback) {
         const shouldDisplayPopupMenu = !raiseDisplayOverflowActionMenuEvent(this, this.renderedElement);
 
         if (shouldDisplayPopupMenu && this.renderedElement) {
@@ -4807,7 +4801,7 @@ class OverflowAction extends Action {
                     contextMenu.closePopup(false);
 
                     if (actionToExecute.isEnabled) {
-                        actionToExecute.execute(parameters);
+                        actionToExecute.execute(parameters, callback);
                     }
                 };
 
@@ -4980,7 +4974,15 @@ class ActionCollection {
                     !this._owner.isDesignMode());
 
                 if (action) {
-                    this.addAction(action);
+                    if (action.isStandalone) {
+                        this.addAction(action);
+                    }
+                    else {
+                        context.logParseEvent(
+                            action,
+                            Enums.ValidationEvent.ActionTypeNotAllowed,
+                            `Actions of type ${action.getJsonTypeName()} cannot be used on their own.`);
+                    }
                 }
             }
         }
@@ -6644,12 +6646,12 @@ function raiseAnchorClickedEvent(element: CardElement, anchor: HTMLAnchorElement
     return onAnchorClickedHandler !== undefined ? onAnchorClickedHandler(element, anchor, ev) : false;
 }
 
-function raiseExecuteActionEvent(action: Action, parameters: any = undefined) {
+function raiseExecuteActionEvent(action: Action, parameters?: any, callback?: ActionExecutionCallback) {
     let card = action.parent ? action.parent.getRootElement() as AdaptiveCard : undefined;
     let onExecuteActionHandler = (card && card.onExecuteAction) ? card.onExecuteAction : AdaptiveCard.onExecuteAction;
 
     if (action.prepareForExecution() && onExecuteActionHandler) {
-        onExecuteActionHandler(action, parameters);
+        onExecuteActionHandler(action, parameters, callback);
     }
 }
 
@@ -7071,9 +7073,8 @@ export class AdaptiveCard extends ContainerWithActions {
 
     //#endregion
 
-    static onSignal?: (element: CardElement, signalableObject: SignalableObject, callback?: SignalCallback) => void;
     static onAnchorClicked?: (element: CardElement, anchor: HTMLAnchorElement, ev?: MouseEvent) => boolean;
-    static onExecuteAction?: (action: Action, parameters: any) => void;
+    static onExecuteAction?: (action: Action, parameters?: any, callback?: ActionExecutionCallback) => void;
     static onElementVisibilityChanged?: (element: CardElement) => void;
     static onImageLoaded?: (image: Image) => void;
     static onInlineCardExpanded?: (action: ShowCardAction, isExpanded: boolean) => void;
@@ -7200,9 +7201,8 @@ export class AdaptiveCard extends ContainerWithActions {
         return true;
     }
 
-    onSignal?: (element: CardElement, signalableObject: SignalableObject, callback?: SignalCallback) => void;
     onAnchorClicked?: (element: CardElement, anchor: HTMLAnchorElement, ev?: MouseEvent) => boolean;
-    onExecuteAction?: (action: Action, parameters: any) => void;
+    onExecuteAction?: (action: Action, parameters?: any, callback?: ActionExecutionCallback) => void;
     onElementVisibilityChanged?: (element: CardElement) => void;
     onImageLoaded?: (image: Image) => void;
     onInlineCardExpanded?: (action: ShowCardAction, isExpanded: boolean) => void;

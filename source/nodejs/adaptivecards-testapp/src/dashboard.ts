@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 import { SerializableObject, StringProperty, Versions, property, NumProperty, SerializableObjectCollectionProperty, AdaptiveApplet, PropertyDefinition, SerializationContext,
-    InputAwareAction, DataQuery, SignalableObject, SignalCallback, CardElement, CardObjectRegistry, Version, ExecuteAction, IActivityRequest, ChannelAdapter, PropertyBag,
-    BaseSerializationContext, HostConfig, Action, StringArrayProperty, AdaptiveCard, RefreshDefinition, ActionProperty } from "adaptivecards";
+    InputAwareAction, CardElement, CardObjectRegistry, Version, ExecuteAction, IActivityRequest, ChannelAdapter, PropertyBag,
+    BaseSerializationContext, HostConfig, Action, StringArrayProperty, AdaptiveCard, RefreshDefinition, ActionProperty, UniversalAction } from "adaptivecards";
 import { CardElementStub } from "./card-element-stub";
 import * as ACData from "adaptivecards-templating";
 import { hostConfig } from "./shared";
@@ -373,7 +373,7 @@ export class WidgetPage extends RenderableObject {
             this._applet.onCreateSerializationContext = (sender: AdaptiveApplet) => {
                 return AdaptiveDashboard.serializationContext;
             }
-            this._applet.onPrepareActivityRequest = (sender: AdaptiveApplet, request: IActivityRequest, action: ExecuteAction) => {
+            this._applet.onPrepareActivityRequest = (sender: AdaptiveApplet, request: IActivityRequest, action: UniversalAction) => {
                 let dashboard = this.parentDashboard;
 
                 if (dashboard) {
@@ -381,34 +381,6 @@ export class WidgetPage extends RenderableObject {
                 }
 
                 return true;
-            }
-            this._applet.onSignal = (sender: AdaptiveApplet, signalableObject: SignalableObject, callback?: SignalCallback) => {
-                console.log(JSON.stringify(signalableObject.toJSON(AdaptiveDashboard.serializationContext), undefined, 4));
-
-                if (signalableObject instanceof DataQuery) {
-                    let url = "https://veryfakebot.azurewebsites.net/botapi/data/" + signalableObject.dataset;
-
-                    if (signalableObject.filter) {
-                        url += "?searchFilter=" + signalableObject.filter;
-                    }
-
-                    console.log("Fetching from " + url);
-
-                    fetch(url).then(
-                        async (value: Response) => {
-                            console.log("Fetching succeeded. Retrieving JSON.");
-
-                            let dataPayload = await value.json();
-
-                            if (callback) {
-                                callback(false, dataPayload);
-                            }
-                        },
-                        (reason: any) => {
-                            console.log("Fetching " + signalableObject.dataset + " failed: " + reason);
-                        }
-                    );
-                }
             }
             this._applet.setCard(this.card);
 
@@ -1031,7 +1003,7 @@ export class AdaptiveDashboard extends RenderableObject {
         return result;
     }
 
-    prepareActivityRequest(sender: AdaptiveApplet, request: IActivityRequest, action: ExecuteAction) {
+    prepareActivityRequest(sender: AdaptiveApplet, request: IActivityRequest, action: UniversalAction) {
         request["environment"] = this._environment;
     }
 

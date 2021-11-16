@@ -1,6 +1,6 @@
 import * as Adaptive from "adaptivecards";
 import * as Shared from "./shared";
-import { ActivityRequestError, AuthCardButton, Authentication, ErrorResponse, LoginRequestResponse, SuccessResponse, TokenExchangeResource } from "adaptivecards";
+import { ActivityRequestError, AuthCardButton, Authentication, ErrorResponse, ExecuteAction, LoginRequestResponse, SuccessResponse, TokenExchangeResource } from "adaptivecards";
 
 export class TestChannelAdapter extends Adaptive.ChannelAdapter {
     constructor(readonly url: string) {
@@ -8,6 +8,10 @@ export class TestChannelAdapter extends Adaptive.ChannelAdapter {
     }
 
     async sendRequestAsync(request: Adaptive.IActivityRequest): Promise<Adaptive.ActivityResponse> {
+        if (!(request.action instanceof ExecuteAction)) {
+            throw new Error("The test channel adapter only supports Action.Execute.");
+        }
+        
         if (request.action.verb === "localException") {
             throw new Error("Local exception");
         }

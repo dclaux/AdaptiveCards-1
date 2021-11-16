@@ -4,7 +4,7 @@ import { GlobalSettings } from "./shared";
 import { ChannelAdapter } from "./channel-adapter";
 import { ActivityResponse, IActivityRequest, ActivityRequestTrigger, SuccessResponse, ErrorResponse, LoginRequestResponse } from "./activity-request";
 import { Strings } from "./strings";
-import { SubmitAction, ExecuteAction, SerializationContext, AdaptiveCard, Action, Input, Authentication, TokenExchangeResource, AuthCardButton, CardElement, SignalableObject, SignalCallback } from "./card-elements";
+import { SubmitAction, ExecuteAction, SerializationContext, AdaptiveCard, Action, Input, TokenExchangeResource, AuthCardButton, ActionExecutionCallback, UniversalAction, DataQuery } from "./card-elements";
 import { Versions } from "./serialization";
 import { HostConfig } from "./host-config";
 
@@ -31,9 +31,11 @@ function logEvent(level: Enums.LogLevel, message?: any, ...optionalParams: any[]
 
 class ActivityRequest implements IActivityRequest {
     constructor(
-        readonly action: ExecuteAction,
+        readonly action: UniversalAction,
         readonly trigger: ActivityRequestTrigger,
-        readonly consecutiveRefreshes: number) { }
+        readonly consecutiveRefreshes: number,
+        readonly parameters?: any,
+        readonly callback?: ActionExecutionCallback) { }
 
     authCode?: string;
     authToken?: string;
@@ -140,9 +142,14 @@ export class AdaptiveApplet {
         }
     }
 
-    private createActivityRequest(action: ExecuteAction, trigger: ActivityRequestTrigger, consecutiveRefreshes: number): ActivityRequest | undefined {
+    private createActivityRequest(
+        action: UniversalAction,
+        trigger: ActivityRequestTrigger,
+        consecutiveRefreshes: number,
+        parameters?: any,
+        callback?: ActionExecutionCallback): ActivityRequest | undefined {
         if (this.card) {
-            let request = new ActivityRequest(action, trigger, consecutiveRefreshes);
+            let request = new ActivityRequest(action, trigger, consecutiveRefreshes, parameters, callback);
             request.onSend = (sender: ActivityRequest) => {
                 sender.attemptNumber++;
 
@@ -244,17 +251,11 @@ export class AdaptiveApplet {
                         this.onPrefetchSSOToken(this, this._card.authentication.tokenExchangeResource);
                     }
 
-                    this._card.onSignal = (sender: CardElement, signalableObject: SignalableObject, callback?: SignalCallback) => {
-                        if (this.onSignal) {
-                            this.onSignal(this, signalableObject, callback);
-                        }
-                    }
-    
-                    this._card.onExecuteAction = (action: Action) => {
+                    this._card.onExecuteAction = (action: Action, parameters?: any, callback?: ActionExecutionCallback) => {
                         // If the user takes an action, cancel any pending automatic refresh
                         this.cancelAutomaticRefresh();
 
-                        this.internalExecuteAction(action, ActivityRequestTrigger.Manual, 0);
+                        this.internalExecuteAction(action, ActivityRequestTrigger.Manual, 0, parameters, callback);
                     }
                     this._card.onInputValueChanged = (input: Input) => {
                         // If the user modifies an input, cancel any pending automatic refresh
@@ -319,10 +320,15 @@ export class AdaptiveApplet {
         }
     }
 
-    private internalExecuteAction(action: Action, trigger: ActivityRequestTrigger, consecutiveRefreshes: number) {
-        if (action instanceof ExecuteAction) {
+    private internalExecuteAction(
+        action: Action,
+        trigger: ActivityRequestTrigger,
+        consecutiveRefreshes: number,
+        parameters?: any,
+        callback?: ActionExecutionCallback) {
+        if (action instanceof UniversalAction) {
             if (this.channelAdapter) {
-                let request = this.createActivityRequest(action, trigger, consecutiveRefreshes);
+                let request = this.createActivityRequest(action, trigger, consecutiveRefreshes, parameters, callback);
 
                 if (request) {
                     request.retryAsync();
@@ -479,19 +485,38 @@ export class AdaptiveApplet {
                         // Leave parseContent as is
                     }
 
-                    if (typeof parsedContent === "string") {
-                        logEvent(Enums.LogLevel.Info, "The activity request returned a string after " + request.attemptNumber + " attempt(s).");
+                    if (request.action instanceof ExecuteAction) {
+                        if (typeof parsedContent === "string") {
+                            logEvent(Enums.LogLevel.Info, "The activity request returned a string after " + request.attemptNumber + " attempt(s).");
 
-                        this.activityRequestSucceeded(response, parsedContent);
+                            this.activityRequestSucceeded(response, parsedContent);
+
+                            if (request.callback) {
+                                request.callback(false, parsedContent);
+                            }
+                        }
+                        else if (typeof parsedContent === "object" && parsedContent["type"] === "AdaptiveCard") {
+                            logEvent(Enums.LogLevel.Info, "The activity request returned an Adaptive Card after " + request.attemptNumber + " attempt(s).");
+
+                            this.internalSetCard(parsedContent, request.consecutiveRefreshes);
+                            this.activityRequestSucceeded(response, this.card);
+
+                            if (request.callback) {
+                                request.callback(false, parsedContent);
+                            }
+                        }
+                        else {
+                            throw new Error(`internalSendActivityRequestAsync: Action.Execute result is of unsupported type (${typeof response.rawContent})`);
+                        }
                     }
-                    else if (typeof parsedContent === "object" && parsedContent["type"] === "AdaptiveCard") {
-                        logEvent(Enums.LogLevel.Info, "The activity request returned an Adaptive Card after " + request.attemptNumber + " attempt(s).");
 
-                        this.internalSetCard(parsedContent, request.consecutiveRefreshes);
+                    if (request.action instanceof DataQuery) {
+                        // All data types are supported in a DataQuery response
                         this.activityRequestSucceeded(response, this.card);
-                    }
-                    else {
-                        throw new Error("internalSendActivityRequestAsync: Action.Execute result is of unsupported type (" + typeof response.rawContent + ")");
+
+                        if (request.callback) {
+                            request.callback(false, parsedContent);
+                        }
                     }
 
                     done = true;
@@ -515,13 +540,17 @@ export class AdaptiveApplet {
                             });
                     }
                     else {
-                        logEvent(
-                            Enums.LogLevel.Error,
-                            `Activity request failed: ${response.error.message}. Giving up after ${request.attemptNumber} attempt(s)`);
+                        let errorMessage = `Activity request failed: ${response.error.message}. Giving up after ${request.attemptNumber} attempt(s)`;
+
+                        logEvent(Enums.LogLevel.Error, errorMessage);
 
                         this.removeProgressOverlay(request);
 
                         done = true;
+
+                        if (request.callback) {
+                            request.callback(false, errorMessage);
+                        }
                     }
                 }
                 else if (response instanceof LoginRequestResponse) {
@@ -592,14 +621,13 @@ export class AdaptiveApplet {
     onCardChanged?: (sender: AdaptiveApplet) => void;
     onPrefetchSSOToken?: (sender: AdaptiveApplet, tokenExchangeResource: TokenExchangeResource) => void;
     onSSOTokenNeeded?: (sender: AdaptiveApplet, request: IActivityRequest, tokenExchangeResource: TokenExchangeResource) => boolean;
-    onPrepareActivityRequest?: (sender: AdaptiveApplet, request: IActivityRequest, action: ExecuteAction) => boolean;
+    onPrepareActivityRequest?: (sender: AdaptiveApplet, request: IActivityRequest, action: UniversalAction) => boolean;
     onActivityRequestSucceeded?: (sender: AdaptiveApplet, response: SuccessResponse, parsedContent: string | AdaptiveCard | undefined) => void;
     onActivityRequestFailed?: (sender: AdaptiveApplet, response: ErrorResponse) => number;
     onCreateSerializationContext?: (sender: AdaptiveApplet) => SerializationContext;
     onCreateProgressOverlay?: (sender: AdaptiveApplet, request: IActivityRequest) => HTMLElement | undefined;
     onRemoveProgressOverlay?: (sender: AdaptiveApplet, request: IActivityRequest) => void;
     onRenderManualRefreshButton?: (sender: AdaptiveApplet) => HTMLElement | undefined;
-    onSignal?: (sender: AdaptiveApplet, signalableObject: SignalableObject, callback?: SignalCallback) => void;
     onAction?: (sender: AdaptiveApplet, action: Action) => void;
     onShowManualRefreshButton?: (sender: AdaptiveApplet) => boolean;
     onShowAuthCodeInputDialog?: (sender: AdaptiveApplet, request: IActivityRequest) => boolean;

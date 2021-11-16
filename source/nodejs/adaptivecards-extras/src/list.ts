@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-import { DataQuery, CardElement, NumProperty, property, PropertyDefinition, SerializableObject, SerializableObjectCollectionProperty, SerializableObjectProperty, SerializationContext, Versions, BaseSerializationContext, SignalableObject, StringProperty, TextBlock, Input } from "adaptivecards";
+import { DataQuery, CardElement, NumProperty, property, PropertyDefinition, SerializableObject, SerializableObjectCollectionProperty,
+    SerializableObjectProperty, SerializationContext, Versions, StringProperty, TextBlock, Input } from "adaptivecards";
 import { Template } from "adaptivecards-templating";
 
 export class ItemTemplate extends SerializableObject {
@@ -98,7 +99,19 @@ export class List extends Input {
     items: any;
 
     @property(List.itemsSourceProperty)
-    itemsSource?: DataQuery;
+    get itemsSource(): DataQuery | undefined {
+        return this.getValue(List.itemsSourceProperty);
+    };
+
+    set itemsSource(value: DataQuery | undefined) {
+        if (this.itemsSource !== value) {
+            this.setValue(List.itemsSourceProperty, value);
+
+            if (value !== undefined) {
+                value.setParent(this);
+            }
+        }
+    };
 
     @property(List.itemTemplatesProperty)
     itemTemplates: ItemTemplate[];
@@ -201,16 +214,15 @@ export class List extends Input {
                 fetching = true;
 
                 this.itemsSource.filter = this.searchFilter;
-                this.itemsSource.signal(
-                    this,
+                this.itemsSource.execute(
+                    undefined,
                     (isError: boolean, result: any) => {
                         if (!isError) {
                             this._fetchedItems = result;
 
                             this.renderItems();
                         }
-                    }
-                )
+                    });
             }
             else {
                 this._fetchedItems = this.items;
@@ -237,6 +249,14 @@ export class List extends Input {
         }
 
         return result;
+    }
+
+    protected internalParse(source: any, context: SerializationContext) {
+        super.internalParse(source, context);
+
+        if (this.itemsSource) {
+            this.itemsSource.setParent(this);
+        }
     }
 
     protected internalRender(): HTMLElement | undefined {

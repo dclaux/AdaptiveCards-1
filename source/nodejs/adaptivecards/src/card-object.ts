@@ -163,6 +163,10 @@ export abstract class CardObject extends SerializableObject {
         return this.contains(node) ? this : undefined;
     }
 
+    get isStandalone(): boolean {
+        return true;
+    }
+
     get parent(): CardObject | undefined {
         return this._parent;
     }
