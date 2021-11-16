@@ -487,7 +487,7 @@ export class AdaptiveApplet {
 
                     if (request.action instanceof ExecuteAction) {
                         if (typeof parsedContent === "string") {
-                            logEvent(Enums.LogLevel.Info, "The activity request returned a string after " + request.attemptNumber + " attempt(s).");
+                            logEvent(Enums.LogLevel.Info, "The activity request returned a string after " + request.attemptNumber + " attempt(s): " + response.rawContent);
 
                             this.activityRequestSucceeded(response, parsedContent);
 
@@ -496,7 +496,7 @@ export class AdaptiveApplet {
                             }
                         }
                         else if (typeof parsedContent === "object" && parsedContent["type"] === "AdaptiveCard") {
-                            logEvent(Enums.LogLevel.Info, "The activity request returned an Adaptive Card after " + request.attemptNumber + " attempt(s).");
+                            logEvent(Enums.LogLevel.Info, "The activity request returned an Adaptive Card after " + request.attemptNumber + " attempt(s): " + response.rawContent);
 
                             this.internalSetCard(parsedContent, request.consecutiveRefreshes);
                             this.activityRequestSucceeded(response, this.card);
