@@ -198,8 +198,16 @@ export class CardElementStub extends CardElement {
     protected internalRender(): HTMLElement | undefined {
         let element = document.createElement("div");
         element.style.height = "100px";
-        element.style.backgroundColor = "yellow";
-        element.innerText = this.typeName;
+        element.style.display = "flex";
+        element.style.alignItems = "center";
+        element.style.justifyContent = "center";
+
+        let spinner = document.createElement("div");
+        spinner.className = "aaf-spinner";
+        spinner.style.width = "28px";
+        spinner.style.height = "28px";
+
+        element.appendChild(spinner);
 
         return element;
     }
